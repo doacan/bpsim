@@ -1,0 +1,801 @@
+// Copyright (c) 2018 Open Networking Foundation
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at:
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option go_package = "github.com/opencord/voltha-protos/v5/go/extension";
+option java_package = "org.opencord.voltha.extension";
+
+package extension;
+
+import "voltha_protos/ext_config.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+
+message ValueSet {
+    string id = 1;
+    oneof value{
+        config.AlarmConfig alarm_config = 2;
+        OnuStatsSetConfig onu_stats_config = 3;
+    }
+}
+
+message GetVoipLineStatusResponse{
+    enum VoipVoiceServerStatus {
+        NONE = 0;
+        REGISTERED = 1;
+        IN_SESSION = 2;
+        FAILED_REGISTRATION_ICMP_ERROR = 3;
+        FAILED_REGISTRATION_FAILED_TCP = 4;
+        FAILED_REGISTRATION_FAILED_AUTHENTICATION = 5;
+        FAILED_REGISTRATION_TIMEOUT = 6;
+        FAILED_REGISTRATION_SERVER_FAIL_CODE = 7;
+        FAILED_INVITE_ICMP_ERROR = 8;
+        FAILED_INVITE_FAILED_TCP = 9;
+        FAILED_INVITE_FAILED_AUTHENTICATION = 10;
+        FAILED_INVITE_TIMEOUT = 11;
+        FAILED_INVITE_SERVER_FAIL_CODE = 12;
+        PORT_NOT_CONFIGURED = 13;
+        CONFIG_DONE = 14;
+        DISABLED_BY_SWITCH = 15;
+    }
+    enum VoipLineState{
+        ON_HOOK = 0;
+        OFF_HOOK = 1;
+        DIALLING = 2;
+        RINGING = 3;
+        AUDIBLE_RINGBACK = 4;
+        CONNECTING = 5;
+        CONNECTED = 6;
+        DISCONNECTING = 7;
+        ROH_NO_TONE = 8;
+        ROH_WITH_TONE = 9;
+        UNKNOWN = 10;
+
+    }
+
+    string potsPortName = 1;
+    VoipVoiceServerStatus serverStatus = 2;
+    VoipLineState         lineState = 3;
+
+}
+
+message OnuStatsSetConfig{
+    enum OnuStatsStatus {
+        ON = 0;
+        OFF = 1;
+    }
+    OnuStatsStatus status = 1;
+    oneof onu_stats_type {
+        string device_id = 2;
+        uint32 pon_port_no = 3;
+    }
+}
+
+message ValueType {
+    enum Type {
+        EMPTY = 0;
+        DISTANCE = 1;
+        POWER = 2;
+    }
+}
+
+message ValueSpecifier {
+    string id = 1;
+    ValueType.Type value = 2;
+}
+
+message ReturnValues {
+    uint32  Set = 1;       // Specifies what values are
+                           // set/valid in return
+
+    uint32 Unsupported = 2; // Specifies requested values not
+                            // supported by the device
+
+    uint32 Error  = 3;      // Specifies requested values not
+                            // fetched because of error
+
+    uint32 Distance = 4;    // Value of distance Set includes
+                            // DISTANCE
+
+    uint32 Power    = 5;    // Value of power Set includes
+                            // POWER
+}
+
+message GetDistanceRequest {
+    string onuDeviceId = 1;
+}
+
+message GetDistanceResponse {
+    uint32 distance = 1; // distance in meters
+}
+
+message GetOnuUniInfoRequest {
+    uint32 uniIndex = 1; // Index of the uni starting from 0
+}
+
+message GetOnuUniInfoResponse {
+    enum MaxSpeed {
+        DEFAULT_VALUE = 0;
+        TEN_BASE_T = 1;
+        HUNDRED_BASE_T = 2;
+        GIGABIT_OPTICAL_ETHERNET = 3;
+        TEN_HUNDRED_GIGABIT_BASE_T = 4;
+        TEN_GIGABIT_BASE_T = 5;
+        TWO_HALF_GIGABIT_BASE_T = 6;
+        FIVE_GIGABIT_BASE_T = 7;
+        TWENTY_FIVE_GIGABIT_BASE_T = 8;
+        FORTY_GIGABIT_BASE_T = 9;
+    }
+
+    enum ConfigurationInd {
+        UNKOWN = 0;
+        TEN_BASE_T_FDX = 1;
+        HUNDRED_BASE_T_FDX = 2;
+        GIGABIT_ETHERNET_FDX = 3;
+        TEN_G_ETHERNET_FDX = 4;
+        TEN_BASE_T_HDX = 5;
+        HUNDRED_BASE_T_HDX = 6;
+        GIGABIT_ETHERNET_HDX = 7;
+        TWO_HALF_G_ETHERNET_FDX = 8;
+        FIVE_G_ETHERNET_FDX = 9;
+        TWENTY_FIVE_G_ETHERNET_FDX = 10;
+        FORTY_G_ETHERNET_FDX = 11;
+    }
+
+    enum AdministrativeState {
+        ADMSTATE_UNDEFINED = 0;
+        LOCKED = 1;
+        UNLOCKED = 2;
+    }
+
+    enum OperationalState {
+        OPERSTATE_UNDEFINED = 0;
+        ENABLED = 1;
+        DISABLED = 2;
+    }
+
+    AdministrativeState admState = 1;
+    OperationalState operState = 2;
+    ConfigurationInd configInd = 3;
+}
+
+message GetOltPortCounters {
+    enum PortType {
+        Port_UNKNOWN = 0;
+        Port_ETHERNET_NNI = 1;
+        Port_PON_OLT = 2;
+    }
+    uint32 portNo = 1;  // Device-unique port number
+    PortType portType = 2;
+}
+
+message GetOltPortCountersResponse {
+    uint64 txBytes = 1;
+    uint64 rxBytes = 2;
+    uint64 txPackets = 3;
+    uint64 rxPackets = 4;
+    uint64 txErrorPackets = 5;
+    uint64 rxErrorPackets = 6;
+    uint64 txBcastPackets = 7;
+    uint64 rxBcastPackets = 8;
+    uint64 txUcastPackets = 9;
+    uint64 rxUcastPackets = 10;
+    uint64 txMcastPackets = 11;
+    uint64 rxMcastPackets = 12;
+}
+
+message GetOnuPonOpticalInfo {
+    google.protobuf.Empty empty = 1;
+}
+
+message GetVoipLineStatusRequest{
+    string potsPortName  = 1;
+    google.protobuf.Empty empty = 2;
+}
+
+message GetPackages {}
+
+message GetLogLevel {}
+
+message GetLogFeature {
+    string configType = 1; // either log tracing or log correlation
+}
+
+message GetLogLevelResponse {
+    map <string, string> package_level_pair = 1;
+}
+
+message GetLogFeatureResponse {
+    string status = 1;
+}
+
+message GetPackagesResponse {
+    repeated string packageName = 1;
+}
+
+// These values correspond to the Optical Line Supervision Test results
+// described in section A3.39.5 of ITU-T G.988 (11/2017) specification.
+message GetOnuPonOpticalInfoResponse{
+    float powerFeedVoltage = 1; // unit of value is voltage
+    float receivedOpticalPower = 2; // unit of value is dBm
+    float meanOpticalLaunchPower = 3; // unit of value is dBm
+    float laserBiasCurrent = 4; // unit of value is milli-amphere (mA)
+    float temperature = 5; // unit of value is degree celsius
+}
+
+message GetOnuEthernetBridgePortHistory {
+    enum Direction {
+        UNDEFINED = 0;
+        UPSTREAM = 1;
+        DOWNSTREAM = 2;
+    }
+    Direction direction = 1;
+}
+
+message GetOnuEthernetBridgePortHistoryResponse {
+     uint32 dropEvents = 1;
+     uint32 octets = 2;
+     uint32 packets= 3;
+     uint32 broadcastPackets = 4;
+     uint32 multicastPackets = 5;
+     uint32 crcErroredPackets = 6;
+     uint32 undersizePackets = 7;
+     uint32 oversizePackets = 8;
+     uint32 packets64octets = 9;
+     uint32 packets65To127octets = 10;
+     uint32 packets128To255Octets = 11;
+     uint32 packets256To511octets = 12;
+     uint32 packets512To1023octets = 13;
+     uint32 packets1024To1518octets = 14;
+}
+
+message GetOnuFecHistory {
+    google.protobuf.Empty empty = 1;
+}
+
+message GetOnuFecHistoryResponse {
+    uint32 correctedBytes = 1;
+    uint32 correctedCodeWords = 2;
+    uint32 fecSeconds = 3;
+    uint32 totalCodeWords = 4;
+    uint32 uncorrectableCodeWords = 5;
+}
+
+message GetOnuCountersRequest {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+}
+
+message GetOmciEthernetFrameExtendedPmRequest {
+    string onuDeviceId = 1;
+    oneof is_uni_index {
+        uint32 uniIndex = 2; // Index of the uni starting from 0
+    }
+    bool reset = 3;
+}
+
+message GetRxPowerRequest {
+    string device_id = 1;
+}
+
+message GetOnuCountersResponse {
+    oneof is_intf_id {
+        fixed32 intf_id = 1;
+    }
+    oneof is_onu_id {
+        fixed32 onu_id = 2;
+    }
+    oneof is_positive_drift {
+        fixed64 positive_drift = 3;
+    }
+    oneof is_negative_drift {
+        fixed64 negative_drift = 4;
+    }
+    oneof is_delimiter_miss_detection {
+        fixed64 delimiter_miss_detection = 5;
+    }
+    oneof is_bip_errors {
+        fixed64 bip_errors = 6;
+    }
+    oneof is_bip_units {
+        fixed64 bip_units = 7;
+    }
+    oneof is_fec_corrected_symbols {
+        fixed64 fec_corrected_symbols = 8;
+    }
+    oneof is_fec_codewords_corrected {
+        fixed64 fec_codewords_corrected = 9;
+    }
+    oneof is_fec_codewords_uncorrectable {
+        fixed64 fec_codewords_uncorrectable = 10;
+    }
+    oneof is_fec_codewords {
+        fixed64 fec_codewords = 11;
+    }
+    oneof is_fec_corrected_units {
+        fixed64 fec_corrected_units = 12;
+    }
+    oneof is_xgem_key_errors {
+        fixed64 xgem_key_errors = 13;
+    }
+    oneof is_xgem_loss {
+        fixed64 xgem_loss = 14;
+    }
+    oneof is_rx_ploams_error {
+        fixed64 rx_ploams_error = 15;
+    }
+    oneof is_rx_ploams_non_idle {
+        fixed64 rx_ploams_non_idle = 16;
+    }
+    oneof is_rx_omci {
+        fixed64 rx_omci = 17;
+    }
+    oneof is_tx_omci {
+        fixed64 tx_omci = 18;
+    }
+    oneof is_rx_omci_packets_crc_error {
+        fixed64 rx_omci_packets_crc_error = 19;
+    }
+    oneof is_rx_bytes {
+        fixed64 rx_bytes = 20;
+    }
+    oneof is_rx_packets {
+        fixed64 rx_packets = 21;
+    }
+    oneof is_tx_bytes {
+        fixed64 tx_bytes = 22;
+    }
+    oneof is_tx_packets {
+        fixed64 tx_packets = 23;
+    }
+    oneof is_ber_reported {
+        fixed64 ber_reported = 24;
+    }
+    oneof is_lcdg_errors {
+        fixed64 lcdg_errors = 25;
+    }
+    oneof is_rdi_errors {
+        fixed64 rdi_errors = 26;
+    }
+    oneof is_timestamp {
+        // reported timestamp in seconds since epoch
+        fixed32 timestamp = 27;
+    }
+}
+
+message OmciEthernetFrameExtendedPm {
+        fixed64 drop_events = 1;
+        fixed64 octets = 2;
+        fixed64 frames = 3;
+        fixed64 broadcast_frames = 4;
+        fixed64 multicast_frames = 5;
+        fixed64 crc_errored_frames = 6;
+        fixed64 undersize_frames = 7;
+        fixed64 oversize_frames = 8;
+        fixed64 frames_64_octets = 9;
+        fixed64 frames_65_to_127_octets = 10;
+        fixed64 frames_128_to_255_octets = 11;
+        fixed64 frames_256_to_511_octets = 12;
+        fixed64 frames_512_to_1023_octets = 13;
+        fixed64 frames_1024_to_1518_octets = 14;
+}
+
+message GetOmciEthernetFrameExtendedPmResponse {
+    enum Format {
+        THIRTY_TWO_BIT = 0;
+        SIXTY_FOUR_BIT = 1;
+    }
+    OmciEthernetFrameExtendedPm upstream = 1;
+    OmciEthernetFrameExtendedPm downstream = 2;
+    Format omci_ethernet_frame_extended_pm_format= 3;
+}
+
+message GetRxPowerResponse {
+    string status = 1;
+    string fail_reason = 2;
+    double rx_power = 3;
+    string device_id = 4;
+}
+
+message GetOnuResourceInstanceRequest {
+    string onu_serial_number = 1;
+    fixed32 uni_id = 2;
+}
+
+message GetOnuResourceInstanceResponse {
+    repeated UniResourceInstance uni_resource_instances = 1;
+}
+
+message UniResourceInstance {
+    fixed32 uni_id = 1;
+    repeated ResourceInstance resource_instances = 2;
+}
+
+message ResourceInstance {
+    uint32 tp_id = 1;
+    string profile_type = 2;
+    uint32 alloc_id = 3;
+    repeated uint32 gemport_ids = 4;
+    uint32 service_vlan = 5;
+    int32 service_pbit = 6;
+}
+
+message GetFlowIdsForGemsRequest {
+    int32 intf_id = 1;
+}
+
+message GetFlowIdsForGemsResponse {
+    map<fixed32, FlowIdsForGemsForIntf> flow_ids_for_gems_for_intfs = 1;
+}
+
+message FlowIdsForGemsForIntf {
+    map<uint32, FlowIdsForGem> flow_ids_for_gems = 1;
+}
+
+message FlowIdsForGem {
+    repeated fixed64 flow_ids = 2;
+}
+
+message GetOnuRequest {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+}
+
+//Object representing an image
+message Image {
+    string name = 1;                // software patch name
+
+    // Version, this is the sole identifier of the image. it's the vendor specified OMCI version
+    // must be known at the time of initiating a download, activate, commit image on an onu.
+    string version = 2;
+
+    // hash of the image to be verified against
+    // Deprecated in voltha 2.8, will be removed
+    uint32 hash = 3;
+
+    // Deprecated in voltha 2.8, will be removed
+    string install_datetime = 4;    // combined date and time expressed in UTC.
+    // use ISO 8601 format for date and time
+
+    // The active software image is one that is currently loaded and executing
+    // in the ONU or circuit pack. Under normal operation, one software image
+    // is always active while the other is inactive. Under no circumstances are
+    // both software images allowed to be active at the same time
+    // Deprecated in voltha 2.8, will be removed
+    bool is_active = 5;             // True if the image is active
+
+    // The committed software image is loaded and executed upon reboot of the
+    // ONU and/or circuit pack. During normal operation, one software image is
+    // always committed, while the other is uncommitted.
+    // Deprecated in voltha 2.8, will be removed
+    bool is_committed = 6;          // True if the image is committed
+
+    // A software image is valid if it has been verified to be an executable
+    // code image. The verification mechanism is not subject to standardization;
+    // however, it should include at least a data integrity (e.g., CRC) check of
+    // the entire code image.
+    // Deprecated in voltha 2.8, will be removed
+    bool is_valid = 7;              // True if the image is valid
+
+    // URL where the image is available
+    // URL MUST be fully qualified,
+    // including filename, username and password
+    string url = 8;
+
+    // Represents the vendor/device mfr
+    // Needs to match the vendor of the device the image will be installed on
+    // optional, if not matched no check will be performed
+    string vendor = 9;
+
+    // Represents the ONU Image CRC value.
+    // Default to value 0 if not specified.
+    // If different then 0 it's used to verify the image retrieved from outside before sending it to the ONU.
+    // Calculation of this needs to be done according to ITU-T I.363.5 as per OMCI spec (section A.2.27)
+    uint32 crc32 = 10;
+
+    //TODO augment with RecommendedWindowsSize, Timeout and other valuable attributes.
+}
+
+message Images {
+    repeated Image image = 1;
+}
+
+message ImageDownload {
+    enum ImageDownloadState {
+        DOWNLOAD_UNKNOWN = 0;
+        DOWNLOAD_SUCCEEDED = 1;
+        DOWNLOAD_REQUESTED = 2;
+        DOWNLOAD_STARTED = 3;
+        DOWNLOAD_FAILED = 4;
+        DOWNLOAD_UNSUPPORTED = 5;
+        DOWNLOAD_CANCELLED = 6;
+    }
+
+    enum ImageDownloadFailureReason {
+        NO_ERROR = 0;
+        INVALID_URL = 1;
+        DEVICE_BUSY = 2;
+        INSUFFICIENT_SPACE = 3;
+        UNKNOWN_ERROR = 4;
+        CANCELLED = 5;
+    }
+
+    enum ImageActivateState {
+        IMAGE_UNKNOWN = 0;
+        IMAGE_INACTIVE = 1;
+        IMAGE_ACTIVATING = 2;
+        IMAGE_ACTIVE = 3;
+        IMAGE_REVERTING = 4;
+        IMAGE_REVERTED = 5;
+    }
+
+    // Device Identifier
+    string id = 1;
+
+    // Image unique identifier
+    string name = 2;
+
+    // URL where the image is available
+    // should include username password
+    string url = 3;
+
+    // CRC of the image to be verified aginst
+    uint32 crc = 4;
+
+    // Download state
+    ImageDownloadState download_state = 5;
+
+    // Downloaded version
+    string image_version = 6;
+
+    // Bytes downloaded
+    uint32 downloaded_bytes = 7;
+
+    // Download failure reason
+    ImageDownloadFailureReason reason= 8;
+
+    // Additional info
+    string additional_info = 9;
+
+    // Save current configuration
+    bool save_config = 10;
+
+    // Image local location
+    string local_dir = 11;
+
+    // Image activation state
+    ImageActivateState image_state = 12;
+
+    // Image file size
+    uint32 file_size = 13;
+
+    // Device Identifier list, used in case of multiple ONU SWU
+    repeated string id_list = 14;
+}
+
+message GetOnuResponse {
+    // Voltha's device identifier
+    string id = 1 ;
+
+    // Device type, refers to one of the registered device types
+    string type = 2 ;
+
+    // Is this device a root device. Each logical switch has one root
+    // device that is associated with the logical flow switch.
+    bool root = 3 ;
+
+    // Parent device id, in the device tree (for a root device, the parent_id
+    // is the logical_device.id)
+    string parent_id = 4;
+    uint32 parent_port_no = 5;
+
+    string pon_label = 6;
+
+    // Vendor, version, serial number, etc.
+    string vendor = 7;
+    string model = 8;
+    string hardware_version = 9;
+    string firmware_version = 10;
+    string inactive_firmware_version = 11; // optional
+    // List of software on the device
+    Images images = 12;
+    string serial_number = 13;
+    // Device technology, for COMBO OLT's it should be set as GPON, XGS-PON, ANY-PON
+    string technology = 14;
+    string vendor_id = 15;
+
+    uint32 num_of_ports = 16; // number of UNI ports (for ONU), number of PON ports (for OLT)
+
+    uint32 distance = 17; // optional - logical distance of an ONU
+
+    // Indicates how to reach the adapter instance that manages this device
+    string adapter_endpoint = 18;
+
+    // Device contact on vlan (if 0, no vlan)
+    uint32 vlan = 19;
+
+    string address = 20;
+
+    string extra_args = 21;  // Used to pass additional device specific arguments
+
+    message ProxyAddress {
+        string device_id = 1;  // Which device to use as proxy to this device
+        string device_type = 2; // The device type of the proxy device to use as the adapter name
+        uint32 channel_id = 3;  // Sub-address within proxy - pon-id
+        uint32 channel_group_id = 4; // Channel Group index
+        string channel_termination = 5; // Channel Termination name
+        uint32 onu_id = 6; // onu identifier; optional
+        uint32 onu_session_id = 7; // session identifier for the ONU; optional
+        string adapter_endpoint = 8; // endpoint of the adapter that handles the proxy device
+        string registration_id = 9; // OMCI registration id; optional
+        string equipment_id = 10; // OMCI equipment id; optional
+    };
+
+    ProxyAddress proxy_address = 22;
+
+    string admin_state = 23;
+
+    string oper_status = 24;
+
+    string connect_status = 25;
+
+    string transient_state = 26;
+
+    string reason = 27;  //  Used in FAILED state
+
+    // TODO additional common attribute here
+
+    // Device type specific attributes
+    google.protobuf.Any custom = 28;
+
+    repeated ImageDownload image_downloads = 29;
+
+    repeated UniResourceInstance uni_resource_instances = 30;
+}
+
+message GetAllOnuResourceInstancesRequest {
+    int32 intf_id = 1;
+}
+
+message GetAllOnuResourceInstancesResponse {
+    map<fixed32, OnuResourceInstanceForIntf> onu_resource_instances_for_intfs = 1;
+}
+
+message OnuResourceInstanceForIntf {
+    map<string, GetOnuResourceInstanceResponse> onu_resource_instances = 1;
+}
+
+message GetValueRequest {
+    oneof request {
+        GetDistanceRequest distance = 1;
+        GetOnuUniInfoRequest uniInfo = 2;
+        // Corresponds to PmMetricId.PON_PORT_COUNTERS, PmMetricId.NNI_PORT_COUNTERS 
+        GetOltPortCounters oltPortInfo = 3;
+        // Corresponds to PmMetricId.PON_OPTICAL
+        GetOnuPonOpticalInfo onuOpticalInfo = 4;
+        // Corresponds to PmMetricId.ETHERNET_BRIDGE_PORT_HISTORY
+        GetOnuEthernetBridgePortHistory ethBridgePort = 5;
+        // Corresponds to PmMetricId.FEC_HISTORY
+        GetOnuFecHistory fecHistory = 6;
+        GetOnuCountersRequest onuPonInfo = 7;
+        GetOmciEthernetFrameExtendedPmRequest onuInfo = 8;
+        GetRxPowerRequest rxPower = 9;
+        GetVoipLineStatusRequest voipStatus = 10;
+        GetLogLevel logLevel = 11;
+        GetLogFeature logFeature = 12;
+        GetOnuResourceInstanceRequest onuResourceInstance = 13;
+        GetPackages packages = 14;
+        GetFlowIdsForGemsRequest flowIdsForGems = 15;
+        GetOnuRequest onu = 16;
+        GetAllOnuResourceInstancesRequest allOnuResourceInstances = 17;
+    }
+}
+
+message GetValueResponse {
+    enum Status {
+        STATUS_UNDEFINED = 0;
+        OK = 1;
+        ERROR = 2;
+    }
+
+    enum ErrorReason {
+        REASON_UNDEFINED = 0;
+        UNSUPPORTED = 1;
+        INVALID_DEVICE_ID = 2;
+        INVALID_PORT_TYPE = 3;
+        TIMEOUT = 4;
+        INVALID_REQ_TYPE = 5;
+        INTERNAL_ERROR = 6;
+        INVALID_DEVICE = 7;
+    }
+    Status status = 1;
+    ErrorReason errReason = 2;
+
+    oneof response {
+        GetDistanceResponse distance = 3;
+        GetOnuUniInfoResponse uniInfo = 4;
+        GetOltPortCountersResponse portCoutners = 5;
+        GetOnuPonOpticalInfoResponse onuOpticalInfo = 6;
+        GetOnuEthernetBridgePortHistoryResponse ethBridgePortInfo = 7;
+        GetOnuFecHistoryResponse fecHistory = 8;
+        GetOnuCountersResponse onuPonCounters = 9;
+        GetOmciEthernetFrameExtendedPmResponse onuCounters = 10;
+        GetRxPowerResponse rxPower = 11;
+        GetVoipLineStatusResponse voipStatus = 12;
+        GetLogLevelResponse logLevel = 13;
+        GetLogFeatureResponse logFeature = 14;
+        GetOnuResourceInstanceResponse onuResourceInstance = 15;
+        GetPackagesResponse packages = 16;
+        GetFlowIdsForGemsResponse flowIdsForGem = 17;
+        GetOnuResponse onu = 18;
+        GetAllOnuResourceInstancesResponse allOnuResourceInstances = 19;
+    }
+}
+
+message SetValueRequest {
+    oneof request {
+        config.AlarmConfig alarm_config = 1;
+        config.LogLevelConfig log_level_config = 2;
+        config.LogFeaturesConfig log_features_config = 3;
+        config.PackageConfig package_config = 4;
+        config.ClearLogLevelConfig clear_log_level_config = 5;
+    }
+}
+
+message SetValueResponse {
+    enum Status {
+        STATUS_UNDEFINED = 0;
+        OK = 1;
+        ERROR = 2;
+    }
+
+    enum ErrorReason {
+        REASON_UNDEFINED = 0;
+        UNSUPPORTED = 1;
+    }
+    Status status = 1;
+    ErrorReason errReason = 2;
+
+    // As of now we don't have any explicit response for the supported SetValueRequests
+    // to be used later
+    //oneof response {
+    //
+    //}
+}
+
+message SingleGetValueRequest {
+    string targetId = 1;
+    GetValueRequest request = 2;
+}
+
+message SingleGetValueResponse{
+    GetValueResponse response = 1;
+}
+
+message SingleSetValueRequest {
+    string targetId = 1;
+    SetValueRequest request = 2;
+}
+message SingleSetValueResponse {
+    SetValueResponse response = 1;
+}
+
+// Extension is a service to get and set specific attributes
+service Extension {
+    // Get a single attribute
+    rpc GetExtValue(SingleGetValueRequest) returns (SingleGetValueResponse);
+    // Set a single attribute
+    rpc SetExtValue(SingleSetValueRequest) returns (SingleSetValueResponse);
+}

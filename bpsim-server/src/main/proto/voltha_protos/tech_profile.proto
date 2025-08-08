@@ -1,0 +1,263 @@
+// Copyright (c) 2018 Open Networking Foundation
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at:
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option go_package = "github.com/opencord/voltha-protos/v5/go/tech_profile";
+option java_package = "org.opencord.voltha.tech_profile";
+
+package tech_profile;
+import "google/api/annotations.proto";
+
+enum Direction {
+    UPSTREAM = 0;
+    DOWNSTREAM = 1;
+    BIDIRECTIONAL = 2;
+}
+
+enum SchedulingPolicy {
+    WRR = 0;
+    StrictPriority = 1;
+    Hybrid = 2;
+}
+
+enum AdditionalBW {
+    AdditionalBW_None = 0;
+    AdditionalBW_NA = 1;
+    AdditionalBW_BestEffort = 2;
+    AdditionalBW_Auto = 3;
+}
+
+enum DiscardPolicy {
+    TailDrop = 0;
+    WTailDrop = 1;
+    Red = 2;
+    WRed = 3;
+}
+
+enum InferredAdditionBWIndication {
+    InferredAdditionBWIndication_None = 0;
+    InferredAdditionBWIndication_Assured = 1;
+    InferredAdditionBWIndication_BestEffort = 2;
+}
+
+message SchedulerConfig {
+    Direction direction = 1;
+    AdditionalBW additional_bw = 2; // Valid on for “direction == Upstream”.
+    fixed32 priority = 3;
+    fixed32 weight = 4;
+    SchedulingPolicy sched_policy = 5;
+}
+
+message TrafficShapingInfo {
+    fixed32 cir = 1;
+    fixed32 cbs = 2;
+    fixed32 pir = 3;
+    fixed32 pbs = 4;
+    fixed32 gir = 5; // only if “direction == Upstream ”
+    InferredAdditionBWIndication add_bw_ind = 6; // only if “direction == Upstream”
+}
+
+message TrafficScheduler {
+    Direction direction = 1;
+    fixed32 alloc_id = 2; // valid only if “direction == Upstream ”
+    SchedulerConfig scheduler = 3;
+    TrafficShapingInfo traffic_shaping_info = 4;
+    fixed32 tech_profile_id = 5;
+}
+
+message TrafficSchedulers {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    fixed32 uni_id = 4;
+    fixed32 port_no = 5;
+    repeated TrafficScheduler traffic_scheds = 3;
+}
+
+message TailDropDiscardConfig {
+    fixed32 queue_size = 1;
+}
+
+message RedDiscardConfig {
+    fixed32 min_threshold = 1;
+    fixed32 max_threshold = 2;
+    fixed32 max_probability = 3;
+}
+
+message WRedDiscardConfig {
+    RedDiscardConfig green = 1;
+    RedDiscardConfig yellow = 2;
+    RedDiscardConfig red = 3;
+}
+
+message DiscardConfig {
+    DiscardPolicy discard_policy = 1;
+    oneof discard_config {
+        TailDropDiscardConfig tail_drop_discard_config = 2;
+        RedDiscardConfig red_discard_config = 3;
+        WRedDiscardConfig wred_discard_config = 4;
+    }
+}
+
+message TrafficQueue {
+    Direction direction = 1;
+    fixed32 gemport_id = 2;
+    string pbit_map = 3;
+    bool aes_encryption = 4;
+    SchedulingPolicy sched_policy = 5; // This can be SP or WRR
+    fixed32 priority = 6;
+    fixed32 weight = 7;
+    DiscardPolicy discard_policy = 8;
+    DiscardConfig discard_config = 9;
+    TrafficShapingInfo traffic_shaping_info = 10;
+    string instance_control = 11;
+}
+
+message TrafficQueues {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    fixed32 uni_id = 4;
+    fixed32 port_no = 5;
+    repeated TrafficQueue traffic_queues = 6;
+    fixed32 tech_profile_id = 7;
+}
+
+message InstanceControl {
+    string onu = 1;
+    string uni = 2;
+    string max_gem_payload_size = 3;
+}
+
+message QThresholds {
+   uint32 q_threshold1 = 1;
+   uint32 q_threshold2 = 2;
+   uint32 q_threshold3 = 3;
+   uint32 q_threshold4 = 4;
+   uint32 q_threshold5 = 5;
+   uint32 q_threshold6 = 6;
+   uint32 q_threshold7 = 7;
+}
+
+message GemPortAttributes {
+    fixed32 gemport_id = 1; // valid only when referenced in the tech profile instance
+    string max_q_size = 2;
+    string pbit_map = 3;
+    string aes_encryption = 4;
+    SchedulingPolicy scheduling_policy = 5; // This can be SP or WRR
+    fixed32 priority_q = 6;
+    fixed32 weight = 7;
+    DiscardPolicy discard_policy = 8;
+    RedDiscardConfig discard_config = 9; // used with version 1 of tech profile
+    DiscardConfig discard_config_v2 = 14; // used with version 2 of tech profile
+    string is_multicast = 10;
+    fixed32 multicast_gem_id = 11;
+    string dynamic_access_control_list = 12;
+    string static_access_control_list = 13;
+    string instance_control = 15;
+}
+
+message SchedulerAttributes {
+    Direction direction = 1;
+    uint32 alloc_id = 2; //  Valid on for “direction == Upstream” and when referenced in the tech profile instance
+    AdditionalBW additional_bw = 3; // Valid on for “direction == Upstream”.
+    fixed32 priority = 4;
+    fixed32 weight = 5;
+    SchedulingPolicy q_sched_policy = 6;
+}
+
+message EPONQueueAttributes {
+    string max_q_size = 1;
+    string pbit_map = 2;
+    uint32 gemport_id = 3;
+    string aes_encryption = 4;
+    string traffic_type = 5;
+    uint32 unsolicited_grant_size = 6;
+    uint32 nominal_interval = 7;
+    uint32 tolerated_poll_jitter = 8;
+    uint32 request_transmission_policy = 9;
+    uint32 num_q_sets = 10;
+    QThresholds q_thresholds = 11;
+    SchedulingPolicy scheduling_policy = 12;
+    uint32 priority_q = 13;
+    uint32 weight = 14;
+    DiscardPolicy discard_policy = 15;
+    RedDiscardConfig discard_config = 16; // used with version 1 of tech profile
+    DiscardConfig discard_config_v2 = 17; // used with version 2 of tech profile
+}
+
+// TechProfile definition (relevant for GPON, XGPON and XGS-PON technologies)
+message TechProfile {
+    string name = 1;
+    uint32 version = 2;
+    string profile_type = 3;
+    uint32 num_gem_ports = 4;
+    uint32 num_bridge_ports = 10;
+    InstanceControl instance_control = 5;
+    SchedulerAttributes us_scheduler = 6;
+    repeated SchedulerAttributes ds_scheduler = 7;
+    repeated GemPortAttributes upstream_gem_port_attribute_list = 8;
+    repeated GemPortAttributes downstream_gem_port_attribute_list = 9;
+}
+
+// EPON TechProfile definition
+message EponTechProfile {
+    string name = 1;
+    uint32 version = 2;
+    string profile_type = 3;
+    uint32 num_gem_ports = 4;
+    InstanceControl instance_control = 5;
+    string package_type = 6;
+    repeated EPONQueueAttributes upstream_queue_attribute_list= 7;
+    repeated EPONQueueAttributes downstream_queue_attribute_list = 8;
+}
+
+// TechProfile Instance definition (relevant for GPON, XGPON and XGS-PON technologies)
+message TechProfileInstance {
+    string name = 1;
+    uint32 version = 2;
+    string subscriber_identifier = 3;
+    string profile_type = 4;
+    uint32 num_gem_ports = 5;
+    uint32 num_bridge_ports = 11;
+    InstanceControl instance_control = 6;
+    SchedulerAttributes us_scheduler = 7;
+    repeated SchedulerAttributes ds_scheduler = 8;
+    repeated GemPortAttributes upstream_gem_port_attribute_list = 9;
+    repeated GemPortAttributes downstream_gem_port_attribute_list = 10;
+}
+
+// EPON TechProfile Instance definition.
+message EponTechProfileInstance {
+    string name = 1;
+    uint32 version = 2;
+    string subscriber_identifier = 3;
+    string profile_type = 4;
+    uint32 num_gem_ports = 5;
+    uint32 alloc_id = 6;
+    InstanceControl instance_control = 7;
+    string package_type = 8;
+    repeated EPONQueueAttributes upstream_queue_attribute_list= 9;
+    repeated EPONQueueAttributes downstream_queue_attribute_list = 10;
+}
+
+// Resource Instance definition
+message ResourceInstance {
+    uint32 tp_id = 1;
+    string profile_type = 2;
+    string subscriber_identifier = 3;
+    uint32 alloc_id = 4;
+    repeated uint32 gemport_ids = 5;
+    uint32 service_vlan = 6;
+    int32 service_pbit = 7;
+}
