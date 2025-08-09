@@ -3,6 +3,8 @@ package com.argela;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.vandermeer.asciitable.AsciiTable;
+import de.vandermeer.asciitable.CWC_LongestLine;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Command;
@@ -12,6 +14,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Command(name = "bpsimctl",
         description = "BPSIM Control CLI Tool",
@@ -29,14 +34,17 @@ class BpsimctlCommand implements Runnable {
     public void run() {
         // Ana komut çalıştırıldığında help göster
         CommandLine.usage(this, System.out);
-    }@Command(name = "dhcp",
+    }
+
+    @Command(name = "dhcp",
             description = "DHCP simulation commands",
             subcommands = {
                     BpsimctlCommand.DhcpCommand.DhcpDiscoveryCommand.class,
                     BpsimctlCommand.DhcpCommand.DhcpOfferCommand.class,
                     BpsimctlCommand.DhcpCommand.DhcpRequestCommand.class,
                     BpsimctlCommand.DhcpCommand.DhcpAckCommand.class,
-                    BpsimctlCommand.DhcpCommand.DhcpListCommand.class
+                    BpsimctlCommand.DhcpCommand.DhcpListCommand.class,
+                    BpsimctlCommand.DhcpCommand.DhcpStormCommand.class
             })
     static class DhcpCommand implements Runnable {
 
@@ -131,24 +139,70 @@ class BpsimctlCommand implements Runnable {
             }
         }
 
-        @Command(name = "list", description = "List DHCP sessions or configurations")
+        @Command(name = "list", description = "List DHCP sessions with filtering options")
         static class DhcpListCommand implements Runnable {
-            @Option(names = {"-f", "--filter"}, description = "Filter results (optional)")
+            @Option(names = {"-f", "--filter"}, description = "General text filter (searches across multiple fields)")
             String filter;
+
+            @Option(names = {"--vlan"}, description = "Filter by VLAN ID")
+            Integer vlanId;
+
+            @Option(names = {"--pon"}, description = "Filter by PON Port")
+            Integer ponPort;
+
+            @Option(names = {"--onu"}, description = "Filter by ONU ID")
+            Integer onuId;
+
+            @Option(names = {"--uni"}, description = "Filter by UNI ID")
+            Integer uniId;
+
+            @Option(names = {"--gem"}, description = "Filter by GEM Port")
+            Integer gemPort;
+
+            @Option(names = {"--state"}, description = "Filter by DHCP state")
+            String state;
 
             @Option(names = {"-u", "--url"}, description = "Server URL (default: http://localhost:8080)")
             String serverUrl = "http://localhost:8080";
 
+            @Option(names = {"-w", "--wide"}, description = "Show all columns (wider output)")
+            boolean wideOutput = false;
+
             @Override
             public void run() {
-                try (HttpClient client = HttpClient.newHttpClient()) {
-                    String endpoint = serverUrl + "/dhcp/list";
+                try {
+                    HttpClient client = HttpClient.newHttpClient();
+
+                    // Build URL with query parameters
+                    StringBuilder urlBuilder = new StringBuilder(serverUrl + "/dhcp/list?");
+                    List<String> queryParams = new ArrayList<>();
+
                     if (filter != null && !filter.trim().isEmpty()) {
-                        endpoint += "?filter=" + filter;
+                        queryParams.add("filter=" + java.net.URLEncoder.encode(filter, "UTF-8"));
+                    }
+                    if (vlanId != null) {
+                        queryParams.add("vlanId=" + vlanId);
+                    }
+                    if (ponPort != null) {
+                        queryParams.add("ponPort=" + ponPort);
+                    }
+                    if (onuId != null) {
+                        queryParams.add("onuId=" + onuId);
+                    }
+                    if (uniId != null) {
+                        queryParams.add("uniId=" + uniId);
+                    }
+                    if (gemPort != null) {
+                        queryParams.add("gemPort=" + gemPort);
+                    }
+                    if (state != null && !state.trim().isEmpty()) {
+                        queryParams.add("state=" + java.net.URLEncoder.encode(state, "UTF-8"));
                     }
 
+                    String finalUrl = urlBuilder + String.join("&", queryParams);
+
                     HttpRequest httpRequest = HttpRequest.newBuilder()
-                            .uri(URI.create(endpoint))
+                            .uri(URI.create(finalUrl))
                             .header("Accept", "application/json")
                             .GET()
                             .build();
@@ -156,28 +210,273 @@ class BpsimctlCommand implements Runnable {
                     HttpResponse<String> response = client.send(httpRequest,
                             HttpResponse.BodyHandlers.ofString());
 
-                    System.out.println("DHCP List Response:");
-                    System.out.println("Response status: " + response.statusCode());
-                    System.out.println("Response body: " + response.body());
+                    if (response.statusCode() != 200) {
+                        System.err.println("Error: HTTP " + response.statusCode());
+                        return;
+                    }
+
+                    // JSON parse
+                    ObjectMapper mapper = new ObjectMapper();
+                    List<Map<String, Object>> list = mapper.readValue(
+                            response.body(),
+                            mapper.getTypeFactory().constructCollectionType(List.class, Map.class)
+                    );
+
+                    if (list.isEmpty()) {
+                        System.out.println("No data available.");
+                        return;
+                    }
+
+                    printAsciiTable(list);
 
                 } catch (Exception e) {
                     System.err.println("Error getting DHCP list: " + e.getMessage());
                     e.printStackTrace();
                 }
             }
+
+            private void printAsciiTable(List<Map<String, Object>> data) {
+                // Gösterilecek alanlar
+                String[] columns;
+                if (wideOutput) {
+                    columns = new String[]{"id", "clientMac", "ipAddress", "state", "dhcpDuration",
+                            "vlanId", "ponPort", "onuId", "uniId", "gemPort", "gateway"};
+                } else {
+                    columns = new String[]{"id", "clientMac", "ipAddress", "state", "dhcpDuration",
+                            "vlanId", "ponPort", "onuId", "uniId", "gemPort"};
+                }
+
+                // Terminal genişliği al
+                int terminalWidth = getTerminalWidth();
+
+                // Her sütun için maksimum genişlik hesapla
+                int[] maxWidths = calculateColumnWidths(data, columns, terminalWidth);
+
+                AsciiTable at = new AsciiTable();
+
+                // Sütun genişliklerini ayarla
+                CWC_LongestLine cwc = new CWC_LongestLine();
+                for (int i = 0; i < columns.length; i++) {
+                    cwc.add(i, maxWidths[i]);
+                }
+                at.getRenderer().setCWC(cwc);
+
+                at.addRule();
+
+                // Header'ları kullanıcı dostu hale getir
+                String[] friendlyHeaders = new String[columns.length];
+                for (int i = 0; i < columns.length; i++) {
+                    friendlyHeaders[i] = getFriendlyColumnName(columns[i]);
+                }
+                at.addRow((Object[]) friendlyHeaders);
+                at.addRule();
+
+                for (Map<String, Object> row : data) {
+                    List<String> values = new ArrayList<>();
+                    for (int i = 0; i < columns.length; i++) {
+                        String value = formatColumnValue(row, columns[i], maxWidths[i]);
+                        values.add(value);
+                    }
+                    at.addRow(values);
+                    at.addRule();
+                }
+
+                System.out.println(at.render());
+
+                // Özet bilgi göster
+                System.out.println("\nTotal devices: " + data.size());
+                if (!data.isEmpty()) {
+                    // State dağılımını göster
+                    Map<String, Long> stateCount = data.stream()
+                            .collect(java.util.stream.Collectors.groupingBy(
+                                    row -> row.get("state") != null ? row.get("state").toString() : "UNKNOWN",
+                                    java.util.stream.Collectors.counting()));
+
+                    System.out.print("State distribution: ");
+                    stateCount.forEach((state, count) -> System.out.print(state + ":" + count + " "));
+                    System.out.println();
+                }
+            }
+
+            private String getFriendlyColumnName(String column) {
+                return switch (column) {
+                    case "id" -> "ID";
+                    case "clientMac" -> "MAC Address";
+                    case "ipAddress" -> "IP Address";
+                    case "state" -> "State";
+                    case "dhcpDuration" -> "DHCP Duration";
+                    case "vlanId" -> "VLAN";
+                    case "ponPort" -> "PON";
+                    case "onuId" -> "ONU";
+                    case "uniId" -> "UNI";
+                    case "gemPort" -> "GEM";
+                    case "gateway" -> "Gateway";
+                    default -> column;
+                };
+            }
+
+            private String formatColumnValue(Map<String, Object> row, String column, int maxWidth) {
+                Object val = row.get(column);
+                String value;
+
+                // DHCP Duration için özel formatla
+                if ("dhcpDuration".equals(column)) {
+                    Long duration = getDhcpDurationMs(row);
+                    if (duration != null) {
+                        if (duration < 1000) {
+                            value = duration + "ms";
+                        } else if (duration < 60000) {
+                            value = String.format("%.1fs", duration / 1000.0);
+                        } else {
+                            value = String.format("%.1fm", duration / 60000.0);
+                        }
+                    } else {
+                        value = "-";
+                    }
+                } else {
+                    value = val != null ? val.toString() : "";
+                }
+
+                // Değeri maksimum genişliğe göre kırp
+                if (value.length() > maxWidth) {
+                    value = value.substring(0, maxWidth - 3) + "...";
+                }
+
+                return value;
+            }
+
+            private Long getDhcpDurationMs(Map<String, Object> row) {
+                try {
+                    Object dhcpStartTimeObj = row.get("dhcpStartTime");
+                    String state = row.get("state") != null ? row.get("state").toString() : "";
+
+                    if (dhcpStartTimeObj != null) {
+                        // dhcpStartTime ISO formatında geliyorsa parse et
+                        String dhcpStartTimeStr = dhcpStartTimeObj.toString();
+                        java.time.Instant dhcpStartTime = java.time.Instant.parse(dhcpStartTimeStr);
+
+                        // Eğer DHCP tamamlandıysa (ACKNOWLEDGED), completion time'ı kullan
+                        if ("ACKNOWLEDGED".equals(state)) {
+                            Object completionTimeObj = row.get("dhcpCompletionTimeMs");
+                            if (completionTimeObj != null) {
+                                return Long.valueOf(completionTimeObj.toString());
+                            }
+                        }
+
+                        // Aksi halde şu anki zamana kadar olan süreyi hesapla
+                        return java.time.Duration.between(dhcpStartTime, java.time.Instant.now()).toMillis();
+                    }
+                } catch (Exception e) {
+                    // Parse hatası durumunda sessizce null döndür
+                }
+                return null;
+            }
+
+            private int getTerminalWidth() {
+                try {
+                    // JLine kullanarak terminal genişliği al
+                    org.jline.terminal.Terminal terminal =
+                            org.jline.terminal.TerminalBuilder.terminal();
+                    return terminal.getWidth();
+                } catch (Exception e) {
+                    // JLine yoksa veya hata varsa varsayılan genişlik
+                    return 120;
+                }
+            }
+
+            private int[] calculateColumnWidths(List<Map<String, Object>> data, String[] columns, int terminalWidth) {
+                int[] maxWidths = new int[columns.length];
+
+                // Header uzunluklarını başlangıç olarak al
+                for (int i = 0; i < columns.length; i++) {
+                    maxWidths[i] = getFriendlyColumnName(columns[i]).length();
+                }
+
+                // Data'daki en uzun değerleri bul
+                for (Map<String, Object> row : data) {
+                    for (int i = 0; i < columns.length; i++) {
+                        String formattedValue = formatColumnValue(row, columns[i], Integer.MAX_VALUE);
+                        if (formattedValue.length() > maxWidths[i]) {
+                            maxWidths[i] = formattedValue.length();
+                        }
+                    }
+                }
+
+                // Minimum ve maksimum genişlik sınırları
+                for (int i = 0; i < maxWidths.length; i++) {
+                    maxWidths[i] = Math.max(maxWidths[i], 4); // Minimum 4 karakter
+                    maxWidths[i] = Math.min(maxWidths[i], 25); // Maksimum 25 karakter
+                }
+
+                // Toplam genişlik hesapla (border'lar için +3 her sütun için)
+                int totalWidth = 0;
+                for (int width : maxWidths) {
+                    totalWidth += width + 3; // 3 = | + space + space
+                }
+                totalWidth += 1; // Son border için
+
+                // Terminal genişliğini aşıyorsa, sütun genişliklerini orantılı olarak küçült
+                if (totalWidth > terminalWidth) {
+                    double ratio = (double)(terminalWidth - (columns.length * 3) - 1) / (totalWidth - (columns.length * 3) - 1);
+                    for (int i = 0; i < maxWidths.length; i++) {
+                        maxWidths[i] = Math.max(3, (int)(maxWidths[i] * ratio)); // Minimum 3 karakter
+                    }
+                }
+
+                return maxWidths;
+            }
         }
 
-        @Command(name = "creat", description = "Create DHCP devices")
-        static class DhcpCreateCommand implements Runnable {
-            @Parameters(index = "0", description = "PON Port")
-            int ponPort;
+        @Command(name = "storm", description = "Create DHCP storm simulation")
+        static class DhcpStormCommand implements Runnable {
+            @Parameters(index = "0", description = "Rate (packets/second) - use either rate or intervalSec")
+            Integer rate;
 
-            @Parameters(index = "1", description = "ONU ID")
-            int onuId;
+            @Parameters(index = "1", description = "Interval in seconds - use either rate or intervalSec", arity = "0..1")
+            Double intervalSec;
+
+            @Option(names = {"-u", "--url"}, description = "Server URL (default: http://localhost:8080)")
+            String serverUrl = "http://localhost:8080";
 
             @Override
             public void run() {
-                //sendDhcpRequest("ACK");
+                // Validate that exactly one of rate or intervalSec is provided
+                if ((rate == null && intervalSec == null) || (rate != null && intervalSec != null)) {
+                    System.err.println("Error: You must specify exactly one of: rate OR intervalSec");
+                    System.err.println("Usage: storm <rate> [intervalSec]");
+                    System.err.println("  - For rate-based: storm 100");
+                    System.err.println("  - For interval-based: storm 0 5");
+                    return;
+                }
+
+                try {
+                    HttpClient client = HttpClient.newHttpClient();
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+                    objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+
+                    // Create request payload
+                    DhcpStormRequest request = new DhcpStormRequest(rate, intervalSec);
+                    String jsonPayload = objectMapper.writeValueAsString(request);
+
+                    HttpRequest httpRequest = HttpRequest.newBuilder()
+                            .uri(URI.create(serverUrl + "/dhcp/storm"))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                            .build();
+
+                    HttpResponse<String> response = client.send(httpRequest,
+                            HttpResponse.BodyHandlers.ofString());
+
+                    System.out.println("DHCP Storm request sent:");
+                    System.out.println(jsonPayload);
+                    System.out.println("Response status: " + response.statusCode());
+                    System.out.println("Response body: " + response.body());
+
+                } catch (Exception e) {
+                    System.err.println("Error sending DHCP Storm request: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
         }
     }

@@ -70,7 +70,6 @@
             <artifactId>quarkus-undertow</artifactId>
         </dependency>
 
-
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>

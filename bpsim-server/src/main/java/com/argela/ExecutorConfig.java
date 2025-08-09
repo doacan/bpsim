@@ -12,7 +12,6 @@ public class ExecutorConfig {
     @ApplicationScoped
     public ManagedExecutor managedExecutor() {
         return ManagedExecutor.builder()
-                .maxAsync(10)
                 .propagated(ThreadContext.CDI, ThreadContext.APPLICATION)
                 .build();
     }

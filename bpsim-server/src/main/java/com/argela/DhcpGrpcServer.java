@@ -7,7 +7,9 @@ import com.netsia.control.lib.api.packet.parsed.dhcp.DhcpRelayAgentOption;
 import io.grpc.stub.StreamObserver;
 import io.quarkus.grpc.GrpcService;
 
+import io.smallrye.context.api.ManagedExecutorConfig;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.context.ManagedExecutor;
 import org.opencord.voltha.openolt.OpenoltGrpc.OpenoltImplBase;
 import org.opencord.voltha.openolt.VolthaOpenOLT;
@@ -26,24 +28,39 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     DeviceService deviceService;
 
     @Inject
+    @ManagedExecutorConfig(maxAsync = 50)
     ManagedExecutor managedExecutor;
+
+    // Configuration Properties
+    @ConfigProperty(name = "dhcp.vlan.default.priority", defaultValue = "3")
+    byte defaultVlanPriority;
+
+    @ConfigProperty(name = "dhcp.lease.default.time", defaultValue = "86400")
+    long defaultLeaseTime;
+
+    @ConfigProperty(name = "dhcp.server.mac", defaultValue = "aa:bb:cc:dd:ee:ff")
+    String serverMacString;
+
+    @ConfigProperty(name = "dhcp.broadcast.mac", defaultValue = "ff:ff:ff:ff:ff:ff")
+    String broadcastMacString;
+
+    // Lazy-initialized MAC addresses
+    private byte[] serverMac;
+    private byte[] broadcastMac;
 
     private final Set<StreamObserver<Indication>> clientStreams = ConcurrentHashMap.newKeySet();
 
-    // Global DHCP configuration values
-    private static final String DEFAULT_DNS_SERVERS = "192.168.1.1";
-    private static final String DEFAULT_GATEWAY = "192.168.1.1";
-    private static final String DEFAULT_SERVER_IP = "192.168.1.1";
-    private static final String DEFAULT_SUBNET_MASK = "255.255.255.0";
-    private static final byte DEFAULT_VLAN_PRIORITY = (byte) 3;
-    private static final long DEFAULT_LEASE_TIME = 86400;
-    private static final String[] CACHED_DNS = DEFAULT_DNS_SERVERS.split(",");
-    private static final byte[] SERVER_MAC = new byte[]{
-            (byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0xee, (byte) 0xff
-    };
-    private static final byte[] BROADCAST_MAC = new byte[]{
-            (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff
-    };
+    private static final int TOTAL_DEVICES = 10;
+
+    // Initialize MAC addresses from configuration
+    private void initializeMacAddresses() {
+        if (serverMac == null) {
+            serverMac = macStringToBytes(serverMacString);
+        }
+        if (broadcastMac == null) {
+            broadcastMac = macStringToBytes(broadcastMacString);
+        }
+    }
 
     // DHCP Message Type constants
     public static final byte DHCP_DISCOVER = 1;
@@ -61,7 +78,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     public void onuPacketOut(VolthaOpenOLT.OnuPacket request, StreamObserver<Empty> responseObserver) {
         CompletableFuture.runAsync(() -> processOnuPacket(request), managedExecutor)
                 .exceptionally(throwable -> {
-                    System.err.println("Error processing ONU packet: " + throwable.getMessage());
+                    System.err.println("Error processing Onu packet: " + throwable.getMessage());
                     return null;
                 });
 
@@ -208,19 +225,22 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * Gelen DHCP Discovery'yi işler ve Offer gönderir
      */
     private void handleReceivedDiscovery(DeviceInfo device, DHCP dhcpPacket, VolthaOpenOLT.UplinkPacket request) {
-        // Device'ı OFFERING durumuna getir ve IP ata
-        String assignedIP = generateUniqueIPAddress();
+        // VLAN ID'ye göre network konfigürasyonu al
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+
+        // IP ata
+        String assignedIP = deviceService.generateUniqueIPAddress(device.getVlanId());
         device.setIpAddress(assignedIP);
         device.setState("OFFERING");
-        device.setDns(DEFAULT_DNS_SERVERS);
-        device.setGateway(DEFAULT_GATEWAY);
-        device.setServerIdentifier(DEFAULT_SERVER_IP);
-        device.setSubnetMask(DEFAULT_SUBNET_MASK);
-        device.setLeaseTime(DEFAULT_LEASE_TIME);
+
+        // Network konfigürasyonu ata
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+        device.setLeaseTime(defaultLeaseTime);
 
         deviceService.updateDevice(device);
-
-        // DHCP Offer gönder
         sendDhcpOffer(device);
     }
 
@@ -235,13 +255,18 @@ public class DhcpGrpcServer extends OpenoltImplBase {
             device.setIpAddress(requestedIP); // ACK'da aynı IP'yi onayla
         }
 
+        // Network konfigürasyonunu güncelle (VLAN'a göre)
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+
         // Device'ı ACKNOWLEDGING durumuna getir
         device.setState("ACKNOWLEDGING");
         device.setLeaseStartTime(Instant.now());
 
         deviceService.updateDevice(device);
-
-        // DHCP ACK gönder
         sendDhcpAck(device);
     }
 
@@ -257,9 +282,14 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         device.setRequiredIp(offeredIPStr);
         device.setState("REQUESTING");
 
-        deviceService.updateDevice(device);
+        // Network konfigürasyonunu güncelle (VLAN'a göre)
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
 
-        // DHCP Request gönder
+        deviceService.updateDevice(device);
         sendDhcpRequest(device);
     }
 
@@ -274,6 +304,14 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         device.setIpAddress(confirmedIPStr);
         device.setState("ACKNOWLEDGED"); // IP adresi başarıyla atandı
         device.setLeaseStartTime(Instant.now());
+
+        // Network konfigürasyonunu güncelle (VLAN'a göre)
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+
         if (device.getDhcpStartTime() != null) {
             long dhcpDuration = device.getDhcpCompletionTimeMs();
         }
@@ -302,22 +340,14 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Benzersiz IP adresi üretir
-     */
-    private String generateUniqueIPAddress() {
-        return deviceService.generateUniqueIPAddress(); // DeviceService'e yönlendir
-    }
-
-
-    /**
-     * DHCP Server paketleri oluşturur (Offer ve ACK)
+     * DHCP Server paketleri oluşturur
      * @param cTag VLAN tag değeri
      * @param clientMac Client MAC adresi
      * @param destinationMac Destination MAC adresi
      * @param sourceMac Source MAC adresi
-     * @param messageType DHCP mesaj türü (DHCP_OFFER veya DHCP_ACK)
+     * @param messageType DHCP mesaj türü (DISCOVERY, OFFER, REQUEST veya ACK)
      * @param clientIP Client'a verilecek IP adresi
-     * @param offeredIP Request için teklif edilen IP (Discover için null olabilir)
+     * @param offeredIP Request için teklif edilen IP (Discover için null)
      * @param serverIP DHCP server IP adresi
      * @param gatewayIP Gateway IP adresi
      * @param subnetMask Subnet mask
@@ -329,6 +359,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     byte messageType, String clientIP, String offeredIP, String serverIP,
                                     String gatewayIP, String subnetMask, String[] dnsServers, int leaseTime,
                                     int XID, String sourceAddress, String destinationAddress) {
+
+        initializeMacAddresses();
 
         DHCP dhcpPacket = new DHCP();
         dhcpPacket.setOpCode((messageType == DHCP_DISCOVER || messageType == DHCP_REQUEST) ? DHCP.OPCODE_REQUEST : DHCP.OPCODE_REPLY);
@@ -492,7 +524,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         eth.setSourceMACAddress(sourceMac);
         eth.setDestinationMACAddress(destinationMac);
         eth.setVlanID((byte) cTag);
-        eth.setPriorityCode(DEFAULT_VLAN_PRIORITY);
+        eth.setPriorityCode(defaultVlanPriority);
         eth.setPayload(ipv4);
 
         return eth.serialize();
@@ -500,33 +532,24 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
     public void sendDhcp(DhcpSimulationRequest request){
         String packetType = request.getPacketType().toLowerCase();
-        switch(packetType) {
-            case "discovery":
-                // Discovery için yeni cihaz oluştur
-                DeviceInfo discoveryDevice = createDeviceForDiscovery(request);
-                deviceService.addDevice(discoveryDevice);
-                sendDhcpDiscover(discoveryDevice);
-                break;
-            case "offer":
-                // Offer için yeni cihaz oluştur
-                DeviceInfo offerDevice = createDeviceForOffer(request);
-                deviceService.addDevice(offerDevice);
-                sendDhcpOffer(offerDevice);
-                break;
-            case "request":
-                // Request için yeni cihaz oluştur
-                DeviceInfo requestDevice = createDeviceForRequest(request);
-                deviceService.addDevice(requestDevice);
-                sendDhcpRequest(requestDevice);
-                break;
-            case "ack":
-                // ACK için yeni cihaz oluştur
-                DeviceInfo ackDevice = createDeviceForAck(request);
-                deviceService.addDevice(ackDevice);
-                sendDhcpAck(ackDevice);
-                break;
-            default:
-                System.err.println("Unknown packet type: " + request.getPacketType());
+        DeviceInfo device = switch(packetType) {
+            case "discovery" -> createDeviceForDiscovery(request);
+            case "offer" -> createDeviceForOffer(request);
+            case "request" -> createDeviceForRequest(request);
+            case "ack" -> createDeviceForAck(request);
+            default -> null;
+        };
+
+        if (device != null) {
+            deviceService.addDevice(device);
+            switch(packetType) {
+                case "discovery" -> sendDhcpDiscover(device);
+                case "offer" -> sendDhcpOffer(device);
+                case "request" -> sendDhcpRequest(device);
+                case "ack" -> sendDhcpAck(device);
+            }
+        } else {
+            System.err.println("Unknown packet type: " + request.getPacketType());
         }
     }
 
@@ -540,7 +563,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 null,                           // ipAddress (henüz yok)
                 null,                           // requiredIp (henüz yok)
                 "DISCOVERING",                  // state
-                null,                           // dns (henüz yok)
+                null,                           // dns (henüz yok - discovery aşamasında)
                 null,                           // gateway (henüz yok)
                 null,                           // serverIdentifier (henüz yok)
                 null,                           // subnetMask (henüz yok)
@@ -556,21 +579,24 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Offer için yeni cihaz oluşturur (sanki discovery yapmış gibi)
+     * Offer için yeni cihaz oluşturur
      */
     private DeviceInfo createDeviceForOffer(DhcpSimulationRequest request) {
+        // Network konfigürasyonunu al
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
+
         return new DeviceInfo(
                 0,                           // id (DeviceService'de otomatik atanacak)
                 null,                           // clientMac
-                generateUniqueIPAddress(),      // ipAddress (offer edilecek IP)
+                deviceService.generateUniqueIPAddress(request.getCTag()), // ipAddress (VLAN'a göre)
                 null,                           // requiredIp (henüz yok)
                 "OFFERED",                      // state
-                DEFAULT_DNS_SERVERS,            // dns
-                DEFAULT_GATEWAY,                // gateway
-                DEFAULT_SERVER_IP,              // serverIdentifier
-                DEFAULT_SUBNET_MASK,            // subnetMask
+                networkConfig.getDnsServers(),  // dns (VLAN'a göre)
+                networkConfig.getGateway(),     // gateway (VLAN'a göre)
+                networkConfig.getServerIdentifier(), // serverIdentifier (VLAN'a göre)
+                networkConfig.getSubnetMask(),  // subnetMask (VLAN'a göre)
                 0,                              // xid
-                DEFAULT_LEASE_TIME,             // leaseTime (24 saat)
+                defaultLeaseTime,               // leaseTime (24 saat)
                 request.getCTag(),              // vlanId
                 request.getPonPort(),           // ponPort
                 request.getGemPort(),           // gemPort
@@ -584,20 +610,22 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * Request için yeni cihaz oluşturur
      */
     private DeviceInfo createDeviceForRequest(DhcpSimulationRequest request) {
-        String offeredIP = generateUniqueIPAddress();
+        // Network konfigürasyonunu al
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
+        String offeredIP = deviceService.generateUniqueIPAddress(request.getCTag());
 
         return new DeviceInfo(
                 0,                           // id (DeviceService'de otomatik atanacak)
                 null,                           // clientMac
-                offeredIP,                      // ipAddress (offer'da alınan IP)
+                offeredIP,                      // ipAddress (offer'da alınan IP - VLAN'a göre)
                 offeredIP,                      // requiredIp (request edilecek IP)
                 "REQUESTING",                   // state
-                DEFAULT_DNS_SERVERS,            // dns
-                DEFAULT_GATEWAY,                // gateway
-                DEFAULT_SERVER_IP,              // serverIdentifier
-                DEFAULT_SUBNET_MASK,            // subnetMask
+                networkConfig.getDnsServers(),  // dns (VLAN'a göre)
+                networkConfig.getGateway(),     // gateway (VLAN'a göre)
+                networkConfig.getServerIdentifier(), // serverIdentifier (VLAN'a göre)
+                networkConfig.getSubnetMask(),  // subnetMask (VLAN'a göre)
                 0,                              // xid
-                DEFAULT_LEASE_TIME,             // leaseTime (24 saat)
+                defaultLeaseTime,               // leaseTime (24 saat)
                 request.getCTag(),              // vlanId
                 request.getPonPort(),           // ponPort
                 request.getGemPort(),           // gemPort
@@ -611,20 +639,22 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * ACK için yeni cihaz oluşturur
      */
     private DeviceInfo createDeviceForAck(DhcpSimulationRequest request) {
-        String requestedIP = generateUniqueIPAddress();
+        // Network konfigürasyonunu al
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
+        String requestedIP = deviceService.generateUniqueIPAddress(request.getCTag());
 
         return new DeviceInfo(
                 0,                           // id (DeviceService'de otomatik atanacak)
                 null,                           // clientMac
-                requestedIP,                    // ipAddress (onaylanacak IP)
+                requestedIP,                    // ipAddress (onaylanacak IP - VLAN'a göre)
                 requestedIP,                    // requiredIp (request edilmiş IP)
                 "ACKNOWLEDGED",                 // state (ACK ile bound olacak)
-                DEFAULT_DNS_SERVERS,            // dns
-                DEFAULT_GATEWAY,                // gateway
-                DEFAULT_SERVER_IP,              // serverIdentifier
-                DEFAULT_SUBNET_MASK,            // subnetMask
+                networkConfig.getDnsServers(),  // dns (VLAN'a göre)
+                networkConfig.getGateway(),     // gateway (VLAN'a göre)
+                networkConfig.getServerIdentifier(), // serverIdentifier (VLAN'a göre)
+                networkConfig.getSubnetMask(),  // subnetMask (VLAN'a göre)
                 0,                              // xid
-                DEFAULT_LEASE_TIME,             // leaseTime (24 saat)
+                defaultLeaseTime,               // leaseTime (24 saat)
                 request.getCTag(),              // vlanId
                 request.getPonPort(),           // ponPort
                 request.getGemPort(),           // gemPort
@@ -638,14 +668,14 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * DHCP Discover paketi gönder
      */
     public void sendDhcpDiscover(DeviceInfo device) {
-        // Device'dan MAC adresini al
+        initializeMacAddresses();
         byte[] clientMac = macStringToBytes(device.getClientMac());
 
         // DHCP Discovery paketi oluştur
         byte[] dhcpPacket = createDhcpPacket(
                 device.getVlanId(),            // VLAN tag
                 clientMac,                     // Client MAC
-                BROADCAST_MAC,                 // Destination MAC (broadcast)
+                broadcastMac,                  // Destination MAC (broadcast)
                 clientMac,                     // Source MAC
                 DHCP_DISCOVER,                 // Message type
                 "0.0.0.0",                     // Client IP (discovery'de 0.0.0.0)
@@ -667,20 +697,30 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * DHCP Offer paketi gönder
      */
     public void sendDhcpOffer(DeviceInfo device) {
+        initializeMacAddresses();
         byte[] clientMac = macStringToBytes(device.getClientMac());
+
+        String[] dnsServers = null;
+        if (device.getDns() != null && !device.getDns().isEmpty()) {
+            dnsServers = device.getDns().split(",");
+            // Whitespace'leri temizle
+            for (int i = 0; i < dnsServers.length; i++) {
+                dnsServers[i] = dnsServers[i].trim();
+            }
+        }
 
         byte[] dhcpPacket = createDhcpPacket(
                 device.getVlanId(),             // VLAN tag
                 clientMac,                      // Client MAC
                 clientMac,                      // Destination MAC (client'a gönderilir)
-                SERVER_MAC,                     // Source MAC (server)
+                serverMac,                      // Source MAC (server)
                 DHCP_OFFER,                     // Message type
                 device.getIpAddress(),          // Client IP (teklif edilen IP)
                 null,                           // Offered IP (offer'da kullanılmaz)
                 device.getServerIdentifier(),   // Server IP
                 device.getGateway(),            // Gateway IP
                 device.getSubnetMask(),         // Subnet mask
-                CACHED_DNS,                     // DNS servers
+                dnsServers,                     // DNS servers
                 (int)device.getLeaseTime(),     // Lease time
                 device.getXid(),                // Transaction ID
                 device.getServerIdentifier(),   // Source IP address
@@ -694,12 +734,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * DHCP Request paketi gönder
      */
     public void sendDhcpRequest(DeviceInfo device) {
+        initializeMacAddresses();
         byte[] clientMac = macStringToBytes(device.getClientMac());
 
         byte[] dhcpPacket = createDhcpPacket(
                 device.getVlanId(),             // VLAN tag
                 clientMac,                      // Client MAC
-                BROADCAST_MAC,                  // Destination MAC (broadcast)
+                broadcastMac,                   // Destination MAC (broadcast)
                 clientMac,                      // Source MAC (client)
                 DHCP_REQUEST,                   // Message type
                 "0.0.0.0",                      // Client IP (request'te genelde 0.0.0.0)
@@ -721,20 +762,29 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * DHCP ACK paketi gönder
      */
     public void sendDhcpAck(DeviceInfo device) {
+        initializeMacAddresses();
         byte[] clientMac = macStringToBytes(device.getClientMac());
+
+        String[] dnsServers = null;
+        if (device.getDns() != null && !device.getDns().isEmpty()) {
+            dnsServers = device.getDns().split(",");
+            for (int i = 0; i < dnsServers.length; i++) {
+                dnsServers[i] = dnsServers[i].trim();
+            }
+        }
 
         byte[] dhcpPacket = createDhcpPacket(
                 device.getVlanId(),             // VLAN tag
                 clientMac,                      // Client MAC
                 clientMac,                      // Destination MAC (client'a gönderilir)
-                SERVER_MAC,                     // Source MAC (server)
+                serverMac,                      // Source MAC (server)
                 DHCP_ACK,                       // Message type
                 device.getIpAddress(),          // Client IP (onaylanan IP)
                 null,                           // Offered IP (ACK'da kullanılmaz)
                 device.getServerIdentifier(),   // Server IP
                 device.getGateway(),            // Gateway IP
                 device.getSubnetMask(),         // Subnet mask
-                CACHED_DNS,                     // DNS servers
+                dnsServers,                     // DNS servers
                 (int)device.getLeaseTime(),     // Lease time
                 device.getXid(),                // Transaction ID
                 device.getServerIdentifier(),   // Source IP address
@@ -782,5 +832,65 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 return true; // Stream bozuk, kaldır
             }
         });
+    }
+
+    /**
+     * DHCP Storm simülasyonu - rastgele parametrelerle 100 cihaz oluşturup discovery gönderir
+     * @param rate Saniyede gönderilecek cihaz sayısı (null ise intervalSec kullanılır)
+     * @param intervalSec Kaç saniyede bir cihaz gönderileceği (null ise rate kullanılır)
+     */
+    public void simulateDhcpStorm(Integer rate, Double intervalSec) {
+        // Delay hesaplama
+        long delayMs;
+        if (rate != null && rate > 0) {
+            // Saniyede 'rate' kadar cihaz gönder
+            delayMs = 1000 / rate; // milisaniye
+        } else if (intervalSec != null && intervalSec > 0) {
+            // Her 'intervalSec' saniyede bir cihaz gönder
+            delayMs = (long) (intervalSec * 1000); // milisaniye
+        } else {
+            System.err.println("Invalid parameters for DHCP storm simulation");
+            return;
+        }
+
+        // 100 cihaz için asenkron gönderi
+        CompletableFuture.runAsync(() -> {
+            try {
+                Random random = new Random();
+
+                for (int i = 0; i < TOTAL_DEVICES; i++) {
+                    // Rastgele parametreler oluştur
+                    int ponPort = random.nextInt(16);      // 0-15 arası PON port
+                    int onuId = random.nextInt(128);       // 0-127 arası ONU ID
+                    int uniId = random.nextInt(4);         // 0-3 arası UNI ID
+                    int gemPort = 1024 + random.nextInt(2048); // 1024-3071 arası GEM port
+                    int cTag = 100 + random.nextInt(3996); // 100-4095 arası C-TAG
+
+                    // DhcpSimulationRequest objesi oluştur
+                    DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
+                            "discovery", ponPort, onuId, uniId, gemPort, cTag
+                    );
+
+                    // Discovery cihazı oluştur ve gönder
+                    DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
+                    deviceService.addDevice(stormDevice);
+
+                    // DHCP Discovery gönder
+                    sendDhcpDiscover(stormDevice);
+
+                    // Son cihaz değilse delay uygula
+                    if (i < TOTAL_DEVICES - 1) {
+                        Thread.sleep(delayMs);
+                    }
+                }
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.err.println("DHCP storm simulation interrupted: " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("Error during DHCP storm simulation: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }, managedExecutor);
     }
 }
