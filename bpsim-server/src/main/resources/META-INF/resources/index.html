@@ -20,9 +20,102 @@
             background-color: #4a90e2;
             color: white;
             padding: 1rem 2rem;
-            text-align: center;
+            display: flex;
+            align-items: center;
             font-size: 1.8rem;
             font-weight: bold;
+            position: relative;
+        }
+
+        .header-title {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .clear-button {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            margin-left: auto;
+        }
+
+        .clear-button:hover {
+            background-color: #d32f2f;
+            transform: scale(1.05);
+        }
+
+        .clear-button:disabled {
+            background-color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .header-controls {
+            margin-left: auto;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .storm-button {
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            min-width: 160px;
+        }
+
+        .storm-button.ready {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .storm-button.progress {
+            background-color: #ff9800;
+            color: white;
+        }
+
+        .storm-button.error {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .notification {
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(-100%);
+            transition: all 0.3s ease-in-out;
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .notification.error {
+            background-color: #f44336;
+            color: white;
         }
 
         .grid {
@@ -62,22 +155,64 @@
             font-size: 0.95rem;
             margin-bottom: 0.25rem;
         }
+
+        .stats-info {
+            background-color: white;
+            margin: 0 2rem;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #4a90e2;
+        }
     </style>
 </head>
 <body>
 <header>
-    DHCP Device Dashboard
+    <div></div> <!-- Left spacer -->
+    <div class="header-title">DHCP Device Dashboard</div>
+    <button class="storm-button ready" id="stormBtn">
+        Storm Ready
+    </button>
+    <button class="clear-button" id="clearAllBtn" onclick="clearAllDevices()">
+        Clear All
+    </button>
 </header>
+
+<div class="stats-info" id="statsInfo">
+    Toplam Cihaz: 0
+</div>
+
 <main class="grid" id="deviceGrid">
     <!-- Device cards will be inserted here -->
 </main>
 
+<div class="notification" id="notification"></div>
+
 <script>
     const ws = new WebSocket("ws://localhost:8080/ws/devices");
     const deviceGrid = document.getElementById("deviceGrid");
+    const statsInfo = document.getElementById("statsInfo");
+    const clearBtn = document.getElementById("clearAllBtn");
+    const stormBtn = document.getElementById("stormBtn");
+    const notification = document.getElementById("notification");
+
+    let deviceCount = 0;
+    let stormStatus = 'ready';
+    let stormParams = null;
 
     ws.onmessage = event => {
-        const device = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
+
+        // Storm status mesajı mı kontrol et
+        if (data.type === 'storm_status') {
+            handleStormStatusUpdate(data);
+            return;
+        }
+
+        const device = data;
         let card = document.getElementById(`device-${device.id}`);
 
         if (!card) {
@@ -85,6 +220,8 @@
             card.className = 'device-card';
             card.id = `device-${device.id}`;
             deviceGrid.appendChild(card);
+            deviceCount++;
+            updateStats();
         }
 
         card.className = 'device-card ' + (device.state === 'ACKNOWLEDGED' ? 'online' : 'offline');
@@ -93,12 +230,11 @@
             if (!durationMs) return 'N/A';
 
             const seconds = (durationMs / 1000).toFixed(2);
-            const status = isCompleted ? ' (Completed)' : ' (In Progress)';
-            return seconds + 's' + status;
+            return seconds + 's';
         }
 
         card.innerHTML = `
-                <div class="device-title">Device #${device.id}</div>
+                <div class="device-title">DHCP Request #${device.id}</div>
                 <div class="device-info"><strong>Client MAC:</strong> ${device.clientMac}</div>
                 <div class="device-info"><strong>IP Address:</strong> ${device.ipAddress}</div>
                 <div class="device-info"><strong>Required IP:</strong> ${device.requiredIp}</div>
@@ -117,6 +253,106 @@
                 <div class="device-info"><strong>ONU ID:</strong> ${device.onuId}</div>
             `;
     };
+
+    function handleStormStatusUpdate(stormData) {
+        stormStatus = stormData.status;
+        stormParams = stormData.params;
+
+        updateStormButton(stormData.status, stormData.params);
+
+        // Notification göster (opsiyonel)
+        if (stormData.message) {
+            const notificationType = stormData.status === 'error' ? 'error' : 'success';
+            showNotification(stormData.message, notificationType);
+        }
+    }
+
+    function updateStormButton(status, params) {
+        stormBtn.className = 'storm-button';
+
+        switch(status) {
+            case 'ready':
+                stormBtn.classList.add('ready');
+                stormBtn.textContent = 'Storm Ready';
+                break;
+            case 'progress':
+                stormBtn.classList.add('progress');
+                let progressText = 'Storm In Progress';
+                if (params) {
+                    if (params.rate) {
+                        progressText += ` (${params.rate}/sec)`;
+                    } else if (params.intervalSec) {
+                        progressText += ` (${params.intervalSec}s)`;
+                    }
+                }
+                stormBtn.textContent = progressText;
+                break;
+            case 'error':
+                stormBtn.classList.add('error');
+                stormBtn.textContent = 'Storm Error';
+                break;
+        }
+    }
+
+    ws.onopen = () => {
+        console.log("WebSocket connection opened");
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        showNotification("WebSocket bağlantı hatası", "error");
+    };
+
+    function updateStats() {
+        statsInfo.textContent = `Toplam Cihaz: ${deviceCount}`;
+    }
+
+    function showNotification(message, type = "success") {
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.classList.add("show");
+
+        setTimeout(() => {
+            notification.classList.remove("show");
+        }, 3000);
+    }
+
+    async function clearAllDevices() {
+        if (!confirm("Tüm cihazları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.")) {
+            return;
+        }
+
+        clearBtn.disabled = true;
+        clearBtn.textContent = "Temizleniyor...";
+
+        try {
+            const response = await fetch('/dhcp/clear-all', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // Clear the UI
+                deviceGrid.innerHTML = '';
+                deviceCount = 0;
+                updateStats();
+
+                showNotification(`Başarıyla temizlendi: ${result.clearedCount} cihaz silindi`, "success");
+            } else {
+                showNotification(`Hata: ${result.message || result.error}`, "error");
+            }
+        } catch (error) {
+            console.error('Error clearing devices:', error);
+            showNotification("Temizleme işlemi sırasında hata oluştu", "error");
+        } finally {
+            clearBtn.disabled = false;
+            clearBtn.textContent = "Tümünü Temizle";
+        }
+    }
 </script>
 </body>
 </html>

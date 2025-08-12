@@ -28,7 +28,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     DeviceService deviceService;
 
     @Inject
-    @ManagedExecutorConfig(maxAsync = 50)
+    @ManagedExecutorConfig(maxAsync = 100)
     ManagedExecutor managedExecutor;
 
     // Configuration Properties
@@ -44,13 +44,27 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     @ConfigProperty(name = "dhcp.broadcast.mac", defaultValue = "ff:ff:ff:ff:ff:ff")
     String broadcastMacString;
 
+    @ConfigProperty(name = "dhcp.pon.port.start", defaultValue = "0")
+    int ponPortStart;
+
+    @ConfigProperty(name = "dhcp.pon.port.count", defaultValue = "16")
+    int ponPortCount;
+
+    @ConfigProperty(name = "dhcp.onu.port.start", defaultValue = "0")
+    int onuPortStart;
+
+    @ConfigProperty(name = "dhcp.onu.port.count", defaultValue = "128")
+    int onuPortCount;
+
     // Lazy-initialized MAC addresses
     private byte[] serverMac;
     private byte[] broadcastMac;
 
     private final Set<StreamObserver<Indication>> clientStreams = ConcurrentHashMap.newKeySet();
 
-    private static final int TOTAL_DEVICES = 10;
+    private volatile boolean stormInProgress = false;
+    private final Object stormLock = new Object();
+    private CompletableFuture<Void> currentStormFuture = null;
 
     // Initialize MAC addresses from configuration
     private void initializeMacAddresses() {
@@ -98,12 +112,19 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         responseObserver.onCompleted();
     }
 
+    /**
+     * Processes incoming ONU packet from VOLTHA
+     * @param request The ONU packet from VOLTHA containing DHCP messages
+     */
     private void processOnuPacket(VolthaOpenOLT.OnuPacket request) {
+        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
+
+         */
         byte[] packetData = request.getPkt().toByteArray();
         try {
             Ethernet ethFrame = Ethernet.deserializer().deserialize(packetData, 0, packetData.length);
@@ -147,12 +168,19 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         }
     }
 
+    /**
+     * Processes incoming uplink packet from VOLTHA
+     * @param request The uplink packet from VOLTHA containing DHCP messages
+     */
     private void processUplinkPacket(VolthaOpenOLT.UplinkPacket request) {
+        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
+
+         */
         byte[] packetData = request.getPkt().toByteArray();
         try {
             Ethernet ethFrame = Ethernet.deserializer().deserialize(packetData, 0, packetData.length);
@@ -197,7 +225,9 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * UDP paketinin DHCP paketi olup olmadığını kontrol eder
+     * Checks if UDP packet is a DHCP packet
+     * @param udpPacket The UDP packet to check
+     * @return true if packet is DHCP, false otherwise
      */
     private boolean isDhcpPacket(UDP udpPacket) {
         return udpPacket.getSourcePort() == UDP.DHCP_SERVER_PORT ||
@@ -207,7 +237,9 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * DHCP paketinden mesaj türünü çıkarır
+     * Extracts DHCP message type from DHCP packet
+     * @param dhcpPacket The DHCP packet to analyze
+     * @return DHCP message type (1-8) or 0 if unknown
      */
     private byte getDhcpMessageType(DHCP dhcpPacket) {
         List<DhcpOption> options = dhcpPacket.getOptions();
@@ -222,7 +254,10 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Gelen DHCP Discovery'yi işler ve Offer gönderir
+     * Handles received DHCP Discovery and sends Offer
+     * @param device The device that sent the discovery
+     * @param dhcpPacket The received DHCP packet
+     * @param request The original uplink packet request
      */
     private void handleReceivedDiscovery(DeviceInfo device, DHCP dhcpPacket, VolthaOpenOLT.UplinkPacket request) {
         // VLAN ID'ye göre network konfigürasyonu al
@@ -245,7 +280,10 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Gelen DHCP Request'i işler ve ACK gönderir
+     * Handles received DHCP Request and sends ACK
+     * @param device The device that sent the request
+     * @param dhcpPacket The received DHCP packet
+     * @param request The original uplink packet request
      */
     private void handleReceivedRequest(DeviceInfo device, DHCP dhcpPacket, VolthaOpenOLT.UplinkPacket request) {
         // Request'teki istenen IP'yi al (Option 50)
@@ -271,7 +309,10 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Gelen DHCP Offer'ı işler ve Request gönderir
+     * Handles received DHCP Offer and sends Request
+     * @param device The device that received the offer
+     * @param dhcpPacket The received DHCP packet
+     * @param request The original ONU packet request
      */
     private void handleReceivedOffer(DeviceInfo device, DHCP dhcpPacket, VolthaOpenOLT.OnuPacket request) {
         // Offer'dan teklif edilen IP'yi al
@@ -294,18 +335,21 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * Gelen DHCP ACK'ı işler ve işlemi tamamlar
+     * Handles received DHCP ACK and completes the process
+     * @param device The device that received the ACK
+     * @param dhcpPacket The received DHCP packet
+     * @param request The original ONU packet request
      */
     private void handleReceivedAck(DeviceInfo device, DHCP dhcpPacket, VolthaOpenOLT.OnuPacket request) {
-        // ACK'dan onaylanan IP'yi al
+        // Get confirmed IP from ACK
         int confirmedIP = dhcpPacket.getYourIPAddress();
         String confirmedIPStr = IPv4.fromIPv4Address(confirmedIP);
 
         device.setIpAddress(confirmedIPStr);
-        device.setState("ACKNOWLEDGED"); // IP adresi başarıyla atandı
+        device.setState("ACKNOWLEDGED"); // IP address successfully assigned
         device.setLeaseStartTime(Instant.now());
 
-        // Network konfigürasyonunu güncelle (VLAN'a göre)
+        // Update network configuration (by VLAN)
         DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
         device.setDns(networkConfig.getDnsServers());
         device.setGateway(networkConfig.getGateway());
@@ -320,7 +364,9 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     }
 
     /**
-     * DHCP Request paketinden istenen IP adresini çıkarır (Option 50)
+     * Extracts requested IP address from DHCP Request packet (Option 50)
+     * @param dhcpPacket The DHCP packet to analyze
+     * @return Requested IP address as string, or null if not found
      */
     private String getRequestedIP(DHCP dhcpPacket) {
         List<DhcpOption> options = dhcpPacket.getOptions();
@@ -806,91 +852,242 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         return mac;
     }
 
-    /**
-     * Packet indication gönderme helper method
-     */
     private void sendPacketIndication(DeviceInfo device, byte[] dhcpPacket) {
-        Indication indication = Indication.newBuilder()
-                .setPktInd(
-                        PacketIndication.newBuilder()
-                                .setIntfType("pon")
-                                .setIntfId(device.getPonPort())
-                                .setOnuId(device.getOnuId())
-                                .setUniId(device.getUniId())
-                                .setGemportId(device.getGemPort())
-                                .setPkt(ByteString.copyFrom(dhcpPacket))
-                                .build()
-                )
-                .build();
+        if (dhcpPacket == null || dhcpPacket.length == 0) {
+            System.err.println("Invalid DHCP packet data");
+            return;
+        }
+        try {
+            PacketIndication.Builder pktBuilder = PacketIndication.newBuilder()
+                    .setIntfType("pon")
+                    .setIntfId(device.getPonPort())
+                    .setGemportId(device.getGemPort())
+                    .setPkt(ByteString.copyFrom(dhcpPacket));
 
-        clientStreams.removeIf(stream -> {
-            try {
-                stream.onNext(indication);
-                return false; // Stream çalışıyor, sakla
-            } catch (Exception e) {
-                System.out.println("Disconnected client removed. Remaining: " + clientStreams.size());
-                return true; // Stream bozuk, kaldır
+            // Optional alanları kontrollü ekle
+            if (device.getOnuId() > 0) {
+                pktBuilder.setOnuId(device.getOnuId());
             }
-        });
+            if (device.getUniId() >= 0) {
+                pktBuilder.setUniId(device.getUniId());
+            }
+            if (device.getPonPort() > 0) {
+                pktBuilder.setPortNo(device.getPonPort());
+            }
+
+            pktBuilder.setFlowId(1000 + device.getVlanId());
+
+            Indication indication = Indication.newBuilder()
+                    .setPktInd(pktBuilder.build())
+                    .build();
+
+            synchronized (clientStreams) {
+                clientStreams.removeIf(stream -> {
+                    try {
+                        stream.onNext(indication);
+                        return false; // Stream çalışıyor
+                    } catch (Exception e) {
+                        System.err.println("Client stream error, removing: " + e.getMessage());
+                        try {
+                            stream.onError(e);
+                        } catch (Exception ignored) {}
+                        return true; // Stream'i kaldır
+                    }
+                });
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error creating packet indication: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
-    /**
-     * DHCP Storm simülasyonu - rastgele parametrelerle 100 cihaz oluşturup discovery gönderir
-     * @param rate Saniyede gönderilecek cihaz sayısı (null ise intervalSec kullanılır)
-     * @param intervalSec Kaç saniyede bir cihaz gönderileceği (null ise rate kullanılır)
-     */
     public void simulateDhcpStorm(Integer rate, Double intervalSec) {
+        synchronized (stormLock) {
+            if (stormInProgress) {
+                throw new RuntimeException("DHCP storm is already in progress. Please wait for current storm to complete.");
+            }
+            stormInProgress = true;
+        }
+
+        DeviceWebSocket.broadcastStormStatus("progress", rate, intervalSec, "Storm started");
+
         // Delay hesaplama
         long delayMs;
         if (rate != null && rate > 0) {
-            // Saniyede 'rate' kadar cihaz gönder
-            delayMs = 1000 / rate; // milisaniye
+            delayMs = 1000 / rate;
         } else if (intervalSec != null && intervalSec > 0) {
-            // Her 'intervalSec' saniyede bir cihaz gönder
-            delayMs = (long) (intervalSec * 1000); // milisaniye
+            delayMs = (long) (intervalSec * 1000);
         } else {
-            System.err.println("Invalid parameters for DHCP storm simulation");
-            return;
+            synchronized (stormLock) {
+                stormInProgress = false;
+            }
+            throw new IllegalArgumentException("Invalid parameters for DHCP storm simulation");
         }
 
-        // 100 cihaz için asenkron gönderi
-        CompletableFuture.runAsync(() -> {
+        // Toplam cihaz sayısını hesapla
+        int totalDevices = ponPortCount * onuPortCount;
+
+        currentStormFuture = CompletableFuture.runAsync(() -> {
             try {
+                System.out.println("DHCP Storm started - Rate: " +
+                        (rate != null ? rate + " devices/sec" : "1 device per " + intervalSec + " seconds"));
+                System.out.println("Total devices to create: " + totalDevices +
+                        " (PON: " + ponPortStart + "-" + (ponPortStart + ponPortCount - 1) +
+                        ", ONU: " + onuPortStart + "-" + (onuPortStart + onuPortCount - 1) + ")");
+
                 Random random = new Random();
+                int successCount = 0;
+                int failureCount = 0;
+                int deviceIndex = 0;
 
-                for (int i = 0; i < TOTAL_DEVICES; i++) {
-                    // Rastgele parametreler oluştur
-                    int ponPort = random.nextInt(16);      // 0-15 arası PON port
-                    int onuId = random.nextInt(128);       // 0-127 arası ONU ID
-                    int uniId = random.nextInt(4);         // 0-3 arası UNI ID
-                    int gemPort = 1024 + random.nextInt(2048); // 1024-3071 arası GEM port
-                    int cTag = 100 + random.nextInt(3996); // 100-4095 arası C-TAG
+                // PON port'lar üzerinde döngü
+                for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
+                    int currentPonPort = ponPortStart + ponIndex;
 
-                    // DhcpSimulationRequest objesi oluştur
-                    DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
-                            "discovery", ponPort, onuId, uniId, gemPort, cTag
-                    );
+                    // ONU port'lar üzerinde döngü
+                    for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
+                        int currentOnuPort = onuPortStart + onuIndex;
+                        deviceIndex++;
 
-                    // Discovery cihazı oluştur ve gönder
-                    DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
-                    deviceService.addDevice(stormDevice);
+                        try {
+                            // Thread interruption kontrolü
+                            if (Thread.currentThread().isInterrupted()) {
+                                System.out.println("Storm interrupted at device " + deviceIndex);
+                                return;
+                            }
 
-                    // DHCP Discovery gönder
-                    sendDhcpDiscover(stormDevice);
+                            // Sabit ve rastgele parametreler
+                            int uniId = 0; // UNI her zaman 0
+                            int gemPort = 1024 + random.nextInt(2048); // GEM port rastgele
+                            int cTag = 100 + random.nextInt(3994); // C-TAG rastgele
 
-                    // Son cihaz değilse delay uygula
-                    if (i < TOTAL_DEVICES - 1) {
-                        Thread.sleep(delayMs);
+                            // DhcpSimulationRequest objesi oluştur
+                            DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
+                                    "discovery", currentPonPort, currentOnuPort, uniId, gemPort, cTag
+                            );
+
+                            // Discovery cihazı oluştur ve gönder
+                            DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
+                            deviceService.addDevice(stormDevice);
+                            sendDhcpDiscover(stormDevice);
+
+                            successCount++;
+
+                            // Progress log (her 50 cihazda bir veya PON port değişiminde)
+                            if (deviceIndex % 50 == 0 || onuIndex == onuPortCount - 1) {
+                                System.out.println("Storm progress: " + deviceIndex + "/" + totalDevices +
+                                        " devices sent (PON: " + currentPonPort + ", ONU: " + currentOnuPort +
+                                        ") - Success: " + successCount + ", Failed: " + failureCount);
+                            }
+
+                            // Son cihaz değilse delay uygula
+                            if (deviceIndex < totalDevices) {
+                                Thread.sleep(delayMs);
+                            }
+
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            System.out.println("Storm interrupted at device " + deviceIndex);
+                            return;
+                        } catch (Exception e) {
+                            failureCount++;
+                            System.err.println("Error sending device " + deviceIndex +
+                                    " (PON: " + currentPonPort + ", ONU: " + currentOnuPort + "): " + e.getMessage());
+                            // Storm'a devam et, sadece bu cihazı atla
+                        }
                     }
+
+                    // Her PON port tamamlandığında log
+                    System.out.println("PON port " + currentPonPort + " completed (" + onuPortCount + " ONUs)");
                 }
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                System.err.println("DHCP storm simulation interrupted: " + e.getMessage());
+                System.out.println("DHCP Storm completed: " + successCount + " devices sent successfully, " +
+                        failureCount + " failed out of " + totalDevices + " total devices");
+
+                DeviceWebSocket.broadcastStormStatus(
+                        "ready",
+                        null,
+                        null,
+                        "Storm completed successfully"
+                );
             } catch (Exception e) {
-                System.err.println("Error during DHCP storm simulation: " + e.getMessage());
+                System.err.println("Fatal error during DHCP storm: " + e.getMessage());
                 e.printStackTrace();
+                DeviceWebSocket.broadcastStormStatus(
+                        "error",
+                        null,
+                        null,
+                        "Storm error: " + e.getMessage()
+                );
+            } finally {
+                synchronized (stormLock) {
+                    stormInProgress = false;
+                    currentStormFuture = null;
+                }
+                System.out.println("DHCP Storm session ended");
             }
         }, managedExecutor);
+
+        // Exception handling için future'ı handle et
+        currentStormFuture.exceptionally(throwable -> {
+            System.err.println("Storm execution error: " + throwable.getMessage());
+            DeviceWebSocket.broadcastStormStatus(
+                    "error",
+                    null,
+                    null,
+                    "Storm execution error: " + throwable.getMessage()
+            );
+            synchronized (stormLock) {
+                stormInProgress = false;
+                currentStormFuture = null;
+            }
+            return null;
+        });
+    }
+
+    // Storm bilgileri için yeni metod
+    public String getStormInfo() {
+        int totalDevices = ponPortCount * onuPortCount;
+        return "Storm Configuration - PON Ports: " + ponPortStart + "-" + (ponPortStart + ponPortCount - 1) +
+                ", ONU Ports: " + onuPortStart + "-" + (onuPortStart + onuPortCount - 1) +
+                ", Total Devices: " + totalDevices;
+    }
+
+    public boolean isStormInProgress() {
+        synchronized (stormLock) {
+            return stormInProgress;
+        }
+    }
+
+    public void cancelStorm() {
+        synchronized (stormLock) {
+            if (stormInProgress && currentStormFuture != null) {
+                System.out.println("Cancelling DHCP storm...");
+                currentStormFuture.cancel(true);
+                stormInProgress = false;
+                currentStormFuture = null;
+                System.out.println("DHCP storm cancelled");
+
+                DeviceWebSocket.broadcastStormStatus(
+                        "ready",
+                        null,
+                        null,
+                        "Storm cancelled"
+                );
+            } else {
+                System.out.println("No active storm to cancel");
+            }
+        }
+    }
+
+    public String getStormStatus() {
+        synchronized (stormLock) {
+            if (stormInProgress) {
+                return "DHCP Storm is currently in progress";
+            } else {
+                return "No active DHCP Storm";
+            }
+        }
     }
 }

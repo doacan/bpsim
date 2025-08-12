@@ -13,21 +13,27 @@ import java.util.stream.Stream;
 
 @Path("/dhcp")
 public class DhcpRestApi {
-    @Inject
-    @ConfigProperty(name = "ponPort")
-    int ponPort;
-
-    @Inject
-    @ConfigProperty(name = "onuPort")
-    int onuPort;
-
-    @Inject
     @ConfigProperty(name = "uniPort")
     int uniPort;
+
+    @ConfigProperty(name = "dhcp.pon.port.start", defaultValue = "0")
+    int ponPortStart;
+
+    @ConfigProperty(name = "dhcp.pon.port.count", defaultValue = "16")
+    int ponPortCount;
+
+    @ConfigProperty(name = "dhcp.onu.port.start", defaultValue = "0")
+    int onuPortStart;
+
+    @ConfigProperty(name = "dhcp.onu.port.count", defaultValue = "128")
+    int onuPortCount;
 
     @Inject
     @GrpcService
     DhcpGrpcServer grpcServer;
+
+    @Inject
+    DeviceService deviceService;
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
@@ -37,29 +43,37 @@ public class DhcpRestApi {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
-        if (request.getPonPort() > (ponPort - 1) ) {
+        // PON port kontrolü
+        int ponPortMax = ponPortStart + ponPortCount - 1;
+        if (request.getPonPort() < ponPortStart || request.getPonPort() > ponPortMax) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
-                    .entity("The number of PON IDs exceeds the allowed maximum of " + ponPort)
+                    .entity("PON Port must be between " + ponPortStart + " and " + ponPortMax +
+                            " (configured range), got: " + request.getPonPort())
                     .build();
         }
 
-        if (request.getOnuId() > (onuPort - 1) ) {
+        // ONU port kontrolü
+        int onuPortMax = onuPortStart + onuPortCount - 1;
+        if (request.getOnuId() < onuPortStart || request.getOnuId() > onuPortMax) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
-                    .entity("The number of ONU IDs exceeds the allowed maximum of " + onuPort)
+                    .entity("ONU ID must be between " + onuPortStart + " and " + onuPortMax +
+                            " (configured range), got: " + request.getOnuId())
                     .build();
         }
 
-        if (request.getUniId() > (uniPort - 1) ) {
+        // UNI kontrolü (her zaman 0 olmalı storm'da, ama manual request'lerde esnek olabilir)
+        if (request.getUniId() < 0 || request.getUniId() > uniPort - 1) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
-                    .entity("The number of UNI IDs exceeds the allowed maximum of " + uniPort)
+                    .entity("UNI ID must be between 0 and " + (uniPort - 1) + ", got: " + request.getUniId())
                     .build();
         }
 
         System.out.printf("Received DHCP Request: packetType=%s, ponPort=%d, onuId=%d, uniId=%d, gemPort=%d, cTag=%d%n",
-                request.getPacketType(), request.getPonPort(), request.getOnuId(), request.getUniId(), request.getGemPort(), request.getCTag());
+                request.getPacketType(), request.getPonPort(), request.getOnuId(), request.getUniId(),
+                request.getGemPort(), request.getCTag());
 
         grpcServer.sendDhcp(request);
 
@@ -154,10 +168,73 @@ public class DhcpRestApi {
                     .build();
         }
 
-        grpcServer.simulateDhcpStorm(request.getRate(), request.getIntervalSec());
+        try {
+            // Storm durumunu kontrol et
+            if (grpcServer.isStormInProgress()) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("{\"error\": \"DHCP storm is already in progress. Please wait for completion or cancel the current storm.\"}")
+                        .build();
+            }
 
-        return Response.ok()
-                .entity("{\"status\": \"DHCP storm started\"}")
-                .build();
+            grpcServer.simulateDhcpStorm(request.getRate(), request.getIntervalSec());
+
+            return Response.ok()
+                    .entity("{\"status\": \"DHCP storm started successfully\"}")
+                    .build();
+
+        } catch (RuntimeException e) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("{\"error\": \"" + e.getMessage() + "\"}")
+                    .build();
+        } catch (Exception e) {
+            System.err.println("Error starting DHCP storm: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to start DHCP storm\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
+
+    /**
+     * Tüm cihazları ve IP pool'larını temizler
+     */
+    @DELETE
+    @Path("/clear-all")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response clearAllDevices() {
+        try {
+            int deviceCount = deviceService.getAllDevices().size();
+
+            // Tüm cihazları temizle (IP'ler ve MAC'ler otomatik serbest bırakılacak)
+            deviceService.clearAll();
+
+            System.out.println("All devices cleared. Total cleared: " + deviceCount);
+
+            return Response.ok()
+                    .entity("{\"status\": \"success\", \"message\": \"All devices cleared\", \"clearedCount\": " + deviceCount + "}")
+                    .build();
+
+        } catch (Exception e) {
+            System.err.println("Error clearing all devices: " + e.getMessage());
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to clear devices\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
+
+    @POST
+    @Path("/storm/cancel")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cancelStorm() {
+        try {
+            grpcServer.cancelStorm();
+            return Response.ok()
+                    .entity("{\"status\": \"Storm cancelled successfully\"}")
+                    .build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to cancel storm\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
     }
 }

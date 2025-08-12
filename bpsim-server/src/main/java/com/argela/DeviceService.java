@@ -20,7 +20,6 @@ public class DeviceService {
     private final ThreadLocal<Random> localRandom = ThreadLocal.withInitial(Random::new);
     private final Set<String> macAddresses = ConcurrentHashMap.newKeySet();
     private final Set<Integer> xids = ConcurrentHashMap.newKeySet();
-    private final Random random = new Random();
     private final ConcurrentHashMap<Integer, DeviceInfo> devicesByXid = new ConcurrentHashMap<>();
 
     @Inject
