@@ -102,7 +102,12 @@ class BpsimctlCommand implements Runnable {
                     queryParams.add("state=" + java.net.URLEncoder.encode(state, StandardCharsets.UTF_8));
                 }
 
-                String finalUrl = urlBuilder + String.join("&", queryParams);
+                String finalUrl;
+                if (!queryParams.isEmpty()) {
+                    finalUrl = urlBuilder + "?" + String.join("&", queryParams);
+                } else {
+                    finalUrl = urlBuilder.toString();
+                }
 
                 HttpRequest httpRequest = HttpRequest.newBuilder()
                         .uri(URI.create(finalUrl))
