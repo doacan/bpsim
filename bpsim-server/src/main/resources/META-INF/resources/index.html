@@ -192,7 +192,7 @@
 <div class="notification" id="notification"></div>
 
 <script>
-    const ws = new WebSocket("ws://localhost:8080/ws/devices");
+    const ws = new WebSocket(`ws://${window.location.host}/ws/devices`);
     const deviceGrid = document.getElementById("deviceGrid");
     const statsInfo = document.getElementById("statsInfo");
     const clearBtn = document.getElementById("clearAllBtn");
