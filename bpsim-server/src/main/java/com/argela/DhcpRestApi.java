@@ -35,6 +35,11 @@ public class DhcpRestApi {
     @Inject
     DeviceService deviceService;
 
+    /**
+     * Simulates a DHCP request based on the provided parameters
+     * @param request The DHCP simulation request containing packet type and network parameters
+     * @return Response indicating success or error status
+     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -43,7 +48,7 @@ public class DhcpRestApi {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
-        // PON port kontrolü
+        // PON port validation
         int ponPortMax = ponPortStart + ponPortCount - 1;
         if (request.getPonPort() < ponPortStart || request.getPonPort() > ponPortMax) {
             return Response
@@ -53,7 +58,7 @@ public class DhcpRestApi {
                     .build();
         }
 
-        // ONU port kontrolü
+        // ONU port validation
         int onuPortMax = onuPortStart + onuPortCount - 1;
         if (request.getOnuId() < onuPortStart || request.getOnuId() > onuPortMax) {
             return Response
@@ -63,7 +68,7 @@ public class DhcpRestApi {
                     .build();
         }
 
-        // UNI kontrolü (her zaman 0 olmalı storm'da, ama manual request'lerde esnek olabilir)
+        // UNI validation (should always be 0 in storm, but can be flexible in manual requests)
         if (request.getUniId() < 0 || request.getUniId() > uniPort - 1) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
@@ -80,6 +85,17 @@ public class DhcpRestApi {
         return Response.ok().entity("{\"status\": \"streamed to gRPC\"}").build();
     }
 
+    /**
+     * Lists DHCP sessions with optional filtering
+     * @param vlanId Filter by VLAN ID (optional)
+     * @param ponPort Filter by PON port (optional)
+     * @param onuId Filter by ONU ID (optional)
+     * @param uniId Filter by UNI ID (optional)
+     * @param gemPort Filter by GEM port (optional)
+     * @param state Filter by device state (optional)
+     * @param filter General text filter for multiple fields (optional)
+     * @return Response containing filtered list of DHCP sessions
+     */
     @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
@@ -143,6 +159,9 @@ public class DhcpRestApi {
 
     /**
      * General filter that searches across multiple fields
+     * @param device The device to check against the filter
+     * @param filter The filter string to search for
+     * @return true if device matches the filter, false otherwise
      */
     private boolean matchesGeneralFilter(DeviceInfo device, String filter) {
         return (device.getClientMac() != null && device.getClientMac().toLowerCase().contains(filter)) ||
@@ -157,6 +176,11 @@ public class DhcpRestApi {
                 String.valueOf(device.getGemPort()).contains(filter);
     }
 
+    /**
+     * Simulates a DHCP storm by creating multiple DHCP requests rapidly
+     * @param request The storm configuration containing rate or interval parameters
+     * @return Response indicating success or error status
+     */
     @POST
     @Path("/storm")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -169,7 +193,7 @@ public class DhcpRestApi {
         }
 
         try {
-            // Storm durumunu kontrol et
+            // Check storm status
             if (grpcServer.isStormInProgress()) {
                 return Response.status(Response.Status.CONFLICT)
                         .entity("{\"error\": \"DHCP storm is already in progress. Please wait for completion or cancel the current storm.\"}")
@@ -195,7 +219,8 @@ public class DhcpRestApi {
     }
 
     /**
-     * Tüm cihazları ve IP pool'larını temizler
+     * Clears all devices and IP pools from the system
+     * @return Response indicating success or error status with count of cleared devices
      */
     @DELETE
     @Path("/clear-all")
@@ -204,7 +229,7 @@ public class DhcpRestApi {
         try {
             int deviceCount = deviceService.getAllDevices().size();
 
-            // Tüm cihazları temizle (IP'ler ve MAC'ler otomatik serbest bırakılacak)
+            // Clear all devices (IPs and MACs will be automatically released)
             deviceService.clearAll();
 
             System.out.println("All devices cleared. Total cleared: " + deviceCount);
@@ -222,6 +247,10 @@ public class DhcpRestApi {
         }
     }
 
+    /**
+     * Cancels the currently running DHCP storm
+     * @return Response indicating success or error status
+     */
     @POST
     @Path("/storm/cancel")
     @Produces(MediaType.APPLICATION_JSON)

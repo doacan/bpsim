@@ -25,36 +25,41 @@ public class DeviceService {
     @Inject
     VlanIPPoolManager vlanIPPoolManager;
 
+    /**
+     * Adds a new device to the system
+     * @param device The device information to add
+     * @throws RuntimeException if maximum device limit is reached or MAC/XID already exists
+     */
     public void addDevice(DeviceInfo device) {
-        // Limit kontrolü
+        // Check device limit
         if (devices.size() >= maxDevices) {
             throw new RuntimeException("Maximum device limit reached: " + maxDevices);
         }
 
-        // MAC adresi yoksa üret
+        // Generate MAC address if not present
         if (device.getClientMac() == null || device.getClientMac().isEmpty()) {
             String newMac = generateUniqueMac();
             device.setClientMac(newMac);
         }
 
-        // MAC'in unique olduğundan emin ol
+        // Ensure MAC is unique
         if (!macAddresses.add(device.getClientMac())) {
             throw new RuntimeException("MAC address already exists: " + device.getClientMac());
         }
 
-        // XID yoksa üret
+        // Generate XID if not present
         if (device.getXid() == 0) {
             int newXid = generateUniqueXID();
             device.setXid(newXid);
         }
 
-        // XID'nin unique olduğundan emin ol
+        // Ensure XID is unique
         if (!xids.add(device.getXid())) {
             macAddresses.remove(device.getClientMac()); // Rollback
             throw new RuntimeException("XID already exists: " + device.getXid());
         }
 
-        // ID ata
+        // Assign ID
         int newId = deviceIdCounter.getAndIncrement();
         device.setId(newId);
 
@@ -64,10 +69,14 @@ public class DeviceService {
         DeviceWebSocket.broadcastDevice(device);
     }
 
+    /**
+     * Updates an existing device
+     * @param device The device information to update
+     */
     public void updateDevice(DeviceInfo device) {
         DeviceInfo existingDevice = devices.get(device.getId());
         if (existingDevice != null) {
-            // Eski IP'yi serbest bırak (VLAN ile birlikte)
+            // Release old IP (with VLAN)
             if (existingDevice.getIpAddress() != null &&
                     !existingDevice.getIpAddress().equals(device.getIpAddress())) {
                 vlanIPPoolManager.releaseIP(existingDevice.getIpAddress(), existingDevice.getVlanId());
@@ -80,6 +89,10 @@ public class DeviceService {
         }
     }
 
+    /**
+     * Removes a device from the system
+     * @param id The device ID to remove
+     */
     public void removeDevice(int id) {
         DeviceInfo device = devices.remove(id);
         if (device != null) {
@@ -87,7 +100,7 @@ public class DeviceService {
             xids.remove(device.getXid());
             devicesByXid.remove(device.getXid());
 
-            // IP'yi VLAN pool'una geri ver
+            // Return IP to VLAN pool
             if (device.getIpAddress() != null) {
                 vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
             }
@@ -96,10 +109,20 @@ public class DeviceService {
         }
     }
 
+    /**
+     * Generates a unique IP address for the specified VLAN
+     * @param vlanId The VLAN ID to generate IP for
+     * @return Unique IP address string
+     */
     public String generateUniqueIPAddress(int vlanId) {
         return vlanIPPoolManager.allocateIP(vlanId);
     }
 
+    /**
+     * Gets network configuration for the specified VLAN
+     * @param vlanId The VLAN ID to get configuration for
+     * @return Network configuration object containing gateway, DNS, subnet mask etc.
+     */
     public NetworkConfiguration getNetworkConfiguration(int vlanId) {
         return new NetworkConfiguration(
                 vlanIPPoolManager.getGatewayIP(vlanId),
@@ -111,48 +134,96 @@ public class DeviceService {
         );
     }
 
+    /**
+     * Finds a device by transaction ID
+     * @param xid The transaction ID to search for
+     * @return Optional containing the device if found
+     */
     public Optional<DeviceInfo> findDeviceByXid(int xid) {
         return Optional.ofNullable(devicesByXid.get(xid));
     }
 
+    /**
+     * Finds a device by device ID
+     * @param id The device ID to search for
+     * @return Optional containing the device if found
+     */
     public Optional<DeviceInfo> findDeviceById(int id) {
         return Optional.ofNullable(devices.get(id));
     }
 
+    /**
+     * Finds a device by MAC address
+     * @param mac The MAC address to search for
+     * @return Optional containing the device if found
+     */
     public Optional<DeviceInfo> findDeviceByMac(String mac) {
         return devices.values().stream()
                 .filter(device -> mac.equals(device.getClientMac()))
                 .findFirst();
     }
 
+    /**
+     * Checks if an IP address is currently in use for the specified VLAN
+     * @param ipAddress The IP address to check
+     * @param vlanId The VLAN ID to check in
+     * @return true if IP is in use, false otherwise
+     */
     public boolean isIPAddressInUse(String ipAddress, int vlanId) {
         return vlanIPPoolManager.isIPInUse(ipAddress, vlanId);
     }
 
+    /**
+     * Gets all devices in the system
+     * @return Collection of all device information
+     */
     public Collection<DeviceInfo> getAllDevices() {
         return devices.values();
     }
 
+    /**
+     * Gets a specific device by ID
+     * @param id The device ID to retrieve
+     * @return Device information or null if not found
+     */
     public DeviceInfo getDevice(int id) {
         return devices.get(id);
     }
 
+    /**
+     * Checks if a MAC address is currently in use
+     * @param macAddress The MAC address to check
+     * @return true if MAC is in use, false otherwise
+     */
     public boolean isMacAddressInUse(String macAddress) {
         return macAddresses.contains(macAddress);
     }
 
+    /**
+     * Gets all devices with the specified state
+     * @param state The device state to filter by
+     * @return List of devices with the specified state
+     */
     public List<DeviceInfo> getDevicesByState(String state) {
         return devices.values().stream()
                 .filter(device -> state.equals(device.getState()))
                 .toList();
     }
 
+    /**
+     * Gets all devices in the specified VLAN
+     * @param vlanId The VLAN ID to filter by
+     * @return List of devices in the specified VLAN
+     */
     public List<DeviceInfo> getDevicesByVlan(int vlanId) {
         return devices.values().stream()
                 .filter(device -> device.getVlanId() == vlanId)
                 .toList();
     }
 
+    /**
+     * Removes devices with expired DHCP leases
+     */
     public void cleanExpiredLeases() {
         Instant now = Instant.now();
         List<DeviceInfo> expiredDevices = devices.values().stream()
@@ -167,16 +238,20 @@ public class DeviceService {
         }
     }
 
+    /**
+     * Gets system statistics including device counts and VLAN information
+     * @return Map containing various system statistics
+     */
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new HashMap<>();
 
-        // Device durumlarına göre sayım
+        // Count devices by state
         Map<String, Long> stateCount = devices.values().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         DeviceInfo::getState,
                         java.util.stream.Collectors.counting()));
 
-        // VLAN bazında device sayım
+        // Count devices by VLAN
         Map<Integer, Long> vlanDeviceCount = devices.values().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         DeviceInfo::getVlanId,
@@ -192,8 +267,11 @@ public class DeviceService {
         return stats;
     }
 
+    /**
+     * Clears all devices and resets the system
+     */
     public void clearAll() {
-        // Tüm IP'leri serbest bırak
+        // Release all IPs
         devices.values().forEach(device -> {
             if (device.getIpAddress() != null) {
                 vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
@@ -208,12 +286,16 @@ public class DeviceService {
         vlanIPPoolManager.clearAll();
     }
 
+    /**
+     * Generates a unique transaction ID
+     * @return A unique XID value
+     */
     private int generateUniqueXID() {
         int newXid;
         do {
             newXid = xidCounter.incrementAndGet();
             if (newXid <= 0) {
-                // Overflow durumunda reset
+                // Reset on overflow
                 xidCounter.compareAndSet(newXid, 1);
                 newXid = 1;
             }
@@ -221,6 +303,10 @@ public class DeviceService {
         return newXid;
     }
 
+    /**
+     * Generates a unique MAC address
+     * @return A unique MAC address string in format xx:xx:xx:xx:xx:xx
+     */
     private String generateUniqueMac() {
         String newMac;
         Random random = localRandom.get();
@@ -228,9 +314,9 @@ public class DeviceService {
         do {
             byte[] mac = new byte[6];
             random.nextBytes(mac);
-            // MAC adresinin ilk byte'ının LSB biti 0 olmalı (unicast)
+            // First byte LSB should be 0 (unicast)
             mac[0] = (byte)(mac[0] & (byte)254);
-            // İlk byte'ın ikinci LSB biti 0 olmalı (globally unique)
+            // First byte second LSB should be 0 (globally unique)
             mac[0] = (byte)(mac[0] & (byte)253);
             newMac = String.format("%02x:%02x:%02x:%02x:%02x:%02x",
                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -239,6 +325,9 @@ public class DeviceService {
         return newMac;
     }
 
+    /**
+     * Network configuration container class
+     */
     public static class NetworkConfiguration {
         private final String gateway;
         private final String dnsServers;
@@ -247,6 +336,15 @@ public class DeviceService {
         private final String networkIP;
         private final String broadcastIP;
 
+        /**
+         * Creates a new network configuration
+         * @param gateway Gateway IP address
+         * @param dnsServers DNS servers (comma-separated)
+         * @param serverIdentifier DHCP server identifier IP
+         * @param subnetMask Subnet mask
+         * @param networkIP Network IP address
+         * @param broadcastIP Broadcast IP address
+         */
         public NetworkConfiguration(String gateway, String dnsServers, String serverIdentifier,
                                     String subnetMask, String networkIP, String broadcastIP) {
             this.gateway = gateway;

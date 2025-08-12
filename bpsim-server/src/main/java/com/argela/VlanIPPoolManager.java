@@ -29,11 +29,11 @@ public class VlanIPPoolManager {
     @ConfigProperty(name = "dhcp.reserved.ips.start", defaultValue = "4")
     int reservedIpsStart;
 
-    // VLAN aralığı: 1-4094
+    // VLAN range: 1-4094
     private static final int MIN_VLAN = 1;
     private static final int MAX_VLAN = 4094;
 
-    // Her VLAN için IP pool'u (254 IP per VLAN, 2-255)
+    // IP pool for each VLAN (254 IPs per VLAN, 2-255)
     private final ConcurrentHashMap<Integer, VlanSubnet> vlanSubnets = new ConcurrentHashMap<>();
     private final ReadWriteLock poolLock = new ReentrantReadWriteLock();
 
@@ -43,6 +43,9 @@ public class VlanIPPoolManager {
     private int maxHostsPerSubnet;
     private String subnetMaskString;
 
+    /**
+     * Initializes IP pools and calculates network parameters
+     */
     @PostConstruct
     public void initializePools() {
         parseBaseNetwork();
@@ -54,9 +57,11 @@ public class VlanIPPoolManager {
                     " VLANs, but system allows up to " + MAX_VLAN);
             System.out.println("  Consider using a smaller subnet mask or different base network");
         }
-
     }
 
+    /**
+     * Parses the base network IP address into octets
+     */
     private void parseBaseNetwork() {
         String[] parts = baseNetworkIP.split("\\.");
         if (parts.length != 4) {
@@ -68,17 +73,20 @@ public class VlanIPPoolManager {
         }
     }
 
+    /**
+     * Calculates subnet parameters based on subnet mask bits
+     */
     private void calculateSubnetParameters() {
         if (subnetMaskBits < 8 || subnetMaskBits > 30) {
             throw new IllegalArgumentException("Subnet mask bits must be between 8 and 30");
         }
 
-        // Subnet mask hesaplama
+        // Calculate subnet mask
         subnetMask = (0xFFFFFFFF << (32 - subnetMaskBits)) & 0xFFFFFFFF;
         hostBits = 32 - subnetMaskBits;
-        maxHostsPerSubnet = (1 << hostBits) - 2; // Network ve broadcast hariç
+        maxHostsPerSubnet = (1 << hostBits) - 2; // Excluding network and broadcast
 
-        // Subnet mask string oluşturma
+        // Generate subnet mask string
         int mask = subnetMask;
         subnetMaskString = String.format("%d.%d.%d.%d",
                 (mask >>> 24) & 0xFF,
@@ -88,24 +96,26 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * VLAN ID'ye göre subnet hesaplama
+     * Calculates subnet information for given VLAN ID
+     * @param vlanId The VLAN ID to calculate subnet for
+     * @return SubnetInfo object containing subnet details
      */
     private SubnetInfo calculateSubnetForVlan(int vlanId) {
         validateVlanId(vlanId);
         validateVlanCapacity(vlanId);
 
-        // Base network'ü 32-bit integer'a çevir
+        // Convert base network to 32-bit integer
         long baseNetworkLong = ((long)baseOctets[0] << 24) |
                 ((long)baseOctets[1] << 16) |
                 ((long)baseOctets[2] << 8) |
                 baseOctets[3];
 
-        // VLAN ID'ye göre subnet offset hesaplama
+        // Calculate subnet offset based on VLAN ID
         long subnetSize = 1L << hostBits;
         long subnetOffset = (vlanId - 1) * subnetSize;
         long networkAddress = baseNetworkLong + subnetOffset;
 
-        // Overflow kontrolü - IPv4 aralığını aşmamalı
+        // Overflow check - should not exceed IPv4 range
         if (networkAddress > 0xFFFFFFFFL) {
             throw new RuntimeException(String.format(
                     "VLAN %d subnet address exceeds IPv4 range. " +
@@ -114,10 +124,10 @@ public class VlanIPPoolManager {
             ));
         }
 
-        // Network ve broadcast adresleri hesaplama
+        // Calculate network and broadcast addresses
         long broadcastAddress = networkAddress + subnetSize - 1;
 
-        // Broadcast da IPv4 aralığını aşmamalı
+        // Broadcast should also not exceed IPv4 range
         if (broadcastAddress > 0xFFFFFFFFL) {
             throw new RuntimeException(String.format(
                     "VLAN %d broadcast address exceeds IPv4 range. " +
@@ -140,6 +150,11 @@ public class VlanIPPoolManager {
         );
     }
 
+    /**
+     * Converts long IP address to string format
+     * @param ip IP address as long value
+     * @return IP address in dotted decimal notation
+     */
     private String longToIP(long ip) {
         return String.format("%d.%d.%d.%d",
                 (ip >>> 24) & 0xFF,
@@ -149,7 +164,9 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * VLAN ID'ye göre IP adresi ayırır
+     * Allocates an IP address for the given VLAN ID
+     * @param vlanId The VLAN ID to allocate IP for
+     * @return Allocated IP address as string
      */
     public String allocateIP(int vlanId) {
         validateVlanId(vlanId);
@@ -164,7 +181,9 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * IP adresini serbest bırakır
+     * Releases an IP address back to the pool
+     * @param ip The IP address to release
+     * @param vlanId The VLAN ID the IP belongs to
      */
     public void releaseIP(String ip, int vlanId) {
         validateVlanId(vlanId);
@@ -185,7 +204,10 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * IP'nin kullanımda olup olmadığını kontrol eder
+     * Checks if an IP address is currently in use
+     * @param ip The IP address to check
+     * @param vlanId The VLAN ID to check in
+     * @return true if IP is in use, false otherwise
      */
     public boolean isIPInUse(String ip, int vlanId) {
         validateVlanId(vlanId);
@@ -203,37 +225,72 @@ public class VlanIPPoolManager {
         }
     }
 
-    // Network configuration methods
+    /**
+     * Gets the gateway IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Gateway IP address
+     */
     public String getGatewayIP(int vlanId) {
         return calculateSubnetForVlan(vlanId).gatewayIP;
     }
 
+    /**
+     * Gets the primary DNS server IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Primary DNS server IP address
+     */
     public String getDNSServerIP(int vlanId) {
         return calculateSubnetForVlan(vlanId).primaryDnsIP;
     }
 
+    /**
+     * Gets the secondary DNS server IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Secondary DNS server IP address
+     */
     public String getSecondaryDNSServerIP(int vlanId) {
         return calculateSubnetForVlan(vlanId).secondaryDnsIP;
     }
 
+    /**
+     * Gets the subnet mask string
+     * @return Subnet mask in dotted decimal notation
+     */
     public String getSubnetMask() {
         return subnetMaskString;
     }
 
+    /**
+     * Gets the network IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Network IP address
+     */
     public String getNetworkIP(int vlanId) {
         return calculateSubnetForVlan(vlanId).networkIP;
     }
 
+    /**
+     * Gets the broadcast IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Broadcast IP address
+     */
     public String getBroadcastIP(int vlanId) {
         return calculateSubnetForVlan(vlanId).broadcastIP;
     }
 
+    /**
+     * Gets the server identifier IP address for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Server identifier IP address (same as gateway)
+     */
     public String getServerIdentifierIP(int vlanId) {
         return getGatewayIP(vlanId);
     }
 
     /**
-     * VLAN için kullanılan IP sayısını döndürür
+     * Returns the number of used IPs for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Number of used IP addresses
      */
     public int getUsedIPCount(int vlanId) {
         validateVlanId(vlanId);
@@ -248,7 +305,9 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * VLAN için kullanılabilir IP sayısını döndürür
+     * Returns the number of available IPs for the given VLAN
+     * @param vlanId The VLAN ID
+     * @return Number of available IP addresses
      */
     public int getAvailableIPCount(int vlanId) {
         validateVlanId(vlanId);
@@ -263,7 +322,8 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Tüm aktif VLAN'lar için istatistikleri döndürür
+     * Returns statistics for all active VLANs
+     * @return VlanPoolStatistics object containing all VLAN statistics
      */
     public VlanPoolStatistics getAllStatistics() {
         poolLock.readLock().lock();
@@ -298,6 +358,11 @@ public class VlanIPPoolManager {
 
     // Private helper methods
 
+    /**
+     * Gets or creates a subnet for the given VLAN ID
+     * @param vlanId The VLAN ID
+     * @return VlanSubnet object for the VLAN
+     */
     private VlanSubnet getOrCreateSubnet(int vlanId) {
         VlanSubnet subnet = vlanSubnets.get(vlanId);
         if (subnet == null) {
@@ -319,12 +384,22 @@ public class VlanIPPoolManager {
         return subnet;
     }
 
+    /**
+     * Validates VLAN ID range
+     * @param vlanId The VLAN ID to validate
+     * @throws IllegalArgumentException if VLAN ID is out of range
+     */
     private void validateVlanId(int vlanId) {
         if (vlanId < MIN_VLAN || vlanId > MAX_VLAN) {
             throw new IllegalArgumentException("VLAN ID must be between " + MIN_VLAN + " and " + MAX_VLAN + ", got: " + vlanId);
         }
     }
 
+    /**
+     * Validates if VLAN can be supported with current configuration
+     * @param vlanId The VLAN ID to validate
+     * @throws RuntimeException if VLAN exceeds capacity
+     */
     private void validateVlanCapacity(int vlanId) {
         int maxSupportedVlans = calculateMaxSupportedVlans();
         if (vlanId > maxSupportedVlans) {
@@ -338,10 +413,11 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Mevcut konfigürasyonla desteklenebilecek maksimum VLAN sayısını hesaplar
+     * Calculates the maximum number of VLANs that can be supported with current configuration
+     * @return Maximum number of supported VLANs
      */
     private int calculateMaxSupportedVlans() {
-        // Base network'ten IPv4 sonuna kadar olan adres alanı
+        // Address space from base network to end of IPv4
         long baseNetworkLong = ((long)baseOctets[0] << 24) |
                 ((long)baseOctets[1] << 16) |
                 ((long)baseOctets[2] << 8) |
@@ -351,10 +427,16 @@ public class VlanIPPoolManager {
         long availableSpace = 0x100000000L - (baseNetworkLong & 0xFFFFFFFFL);
         int maxVlans = (int)(availableSpace / subnetSize);
 
-        // 4094'ten fazla olamaz (VLAN ID limiti)
+        // Cannot exceed 4094 (VLAN ID limit)
         return Math.min(maxVlans, MAX_VLAN);
     }
 
+    /**
+     * Checks if IP address is valid for the given VLAN
+     * @param ip The IP address to validate
+     * @param vlanId The VLAN ID to check against
+     * @return true if IP is valid for VLAN, false otherwise
+     */
     private boolean isValidIPForVlan(String ip, int vlanId) {
         if (ip == null) return false;
 
@@ -370,6 +452,11 @@ public class VlanIPPoolManager {
         }
     }
 
+    /**
+     * Converts IP address string to long value
+     * @param ip IP address in dotted decimal notation
+     * @return IP address as long value
+     */
     private long ipToLong(String ip) {
         String[] parts = ip.split("\\.");
         long result = 0;
@@ -380,7 +467,8 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Belirli VLAN'ı temizler
+     * Clears the specified VLAN subnet
+     * @param vlanId The VLAN ID to clear
      */
     public void clearVlan(int vlanId) {
         validateVlanId(vlanId);
@@ -394,7 +482,7 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Tüm VLAN'ları temizler
+     * Clears all VLAN subnets
      */
     public void clearAll() {
         poolLock.writeLock().lock();
@@ -408,7 +496,7 @@ public class VlanIPPoolManager {
     // Inner classes
 
     /**
-     * Subnet bilgileri sınıfı
+     * Subnet information class
      */
     private static class SubnetInfo {
         final String networkIP;
@@ -422,6 +510,19 @@ public class VlanIPPoolManager {
         final int reservedStart;
         final int maxHosts;
 
+        /**
+         * Constructor for SubnetInfo
+         * @param networkIP Network IP address
+         * @param broadcastIP Broadcast IP address
+         * @param gatewayIP Gateway IP address
+         * @param primaryDnsIP Primary DNS server IP
+         * @param secondaryDnsIP Secondary DNS server IP
+         * @param subnetMask Subnet mask
+         * @param networkAddressInt Network address as integer
+         * @param broadcastAddressInt Broadcast address as integer
+         * @param reservedStart Start of reserved IP range
+         * @param maxHosts Maximum number of hosts
+         */
         SubnetInfo(String networkIP, String broadcastIP, String gatewayIP,
                    String primaryDnsIP, String secondaryDnsIP, String subnetMask,
                    int networkAddressInt, int broadcastAddressInt,
@@ -440,7 +541,7 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Tek bir VLAN subnet'ini yöneten sınıf
+     * Class that manages a single VLAN subnet
      */
     private static class VlanSubnet {
         private final int vlanId;
@@ -449,16 +550,26 @@ public class VlanIPPoolManager {
         private final int usableIPStart;
         private final int usableIPCount;
 
+        /**
+         * Constructor for VlanSubnet
+         * @param vlanId The VLAN ID
+         * @param subnetInfo Subnet information
+         */
         public VlanSubnet(int vlanId, SubnetInfo subnetInfo) {
             this.vlanId = vlanId;
             this.subnetInfo = subnetInfo;
 
-            // Kullanılabilir IP aralığını hesapla (reserved IP'leri atla)
+            // Calculate usable IP range (skip reserved IPs)
             this.usableIPStart = subnetInfo.reservedStart;
             this.usableIPCount = subnetInfo.maxHosts - subnetInfo.reservedStart + 1;
             this.ipPool = new BitSet(usableIPCount);
         }
 
+        /**
+         * Allocates the next available IP address
+         * @return Allocated IP address as string
+         * @throws RuntimeException if IP pool is exhausted
+         */
         public synchronized String allocateIP() {
             int nextAvailable = ipPool.nextClearBit(0);
             if (nextAvailable >= usableIPCount) {
@@ -468,7 +579,7 @@ public class VlanIPPoolManager {
 
             ipPool.set(nextAvailable);
 
-            // Index'i IP adresine çevir
+            // Convert index to IP address
             int hostOffset = usableIPStart + nextAvailable;
             long ipAddress = subnetInfo.networkAddressInt + hostOffset;
 
@@ -479,6 +590,10 @@ public class VlanIPPoolManager {
                     ipAddress & 0xFF);
         }
 
+        /**
+         * Releases an IP address back to the pool
+         * @param ip The IP address to release
+         */
         public synchronized void releaseIP(String ip) {
             try {
                 String[] parts = ip.split("\\.");
@@ -498,6 +613,11 @@ public class VlanIPPoolManager {
             }
         }
 
+        /**
+         * Checks if an IP address is currently in use
+         * @param ip The IP address to check
+         * @return true if IP is in use, false otherwise
+         */
         public synchronized boolean isIPInUse(String ip) {
             try {
                 String[] parts = ip.split("\\.");
@@ -515,17 +635,25 @@ public class VlanIPPoolManager {
             }
         }
 
+        /**
+         * Gets the number of used IP addresses
+         * @return Number of used IPs
+         */
         public int getUsedIPCount() {
             return ipPool.cardinality();
         }
 
+        /**
+         * Gets the number of available IP addresses
+         * @return Number of available IPs
+         */
         public int getAvailableIPCount() {
             return usableIPCount - ipPool.cardinality();
         }
     }
 
     /**
-     * VLAN istatistikleri sınıfı
+     * VLAN statistics class
      */
     public static class VlanStatistics {
         public int vlanId;
@@ -547,7 +675,7 @@ public class VlanIPPoolManager {
     }
 
     /**
-     * Tüm VLAN pool istatistikleri
+     * All VLAN pool statistics
      */
     public static class VlanPoolStatistics {
         public int activeVlanCount;
