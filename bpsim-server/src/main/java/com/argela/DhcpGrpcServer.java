@@ -16,6 +16,7 @@ import org.opencord.voltha.openolt.VolthaOpenOLT;
 import org.opencord.voltha.openolt.VolthaOpenOLT.Indication;
 import org.opencord.voltha.openolt.VolthaOpenOLT.PacketIndication;
 import org.opencord.voltha.openolt.VolthaOpenOLT.Empty;
+import org.opencord.voltha.openolt.VolthaOpenOLT.DeviceInfo.DeviceResourceRanges;
 
 import java.time.Instant;
 import java.util.*;
@@ -138,40 +139,40 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
     @Override
     public void getDeviceInfo(Empty request, StreamObserver<VolthaOpenOLT.DeviceInfo> responseObserver) {
-        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool onuIdPool =
-                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
-                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.ONU_ID)
-                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.DEDICATED_PER_INTF)
+        DeviceResourceRanges.Pool onuIdPool =
+                DeviceResourceRanges.Pool.newBuilder()
+                        .setType(DeviceResourceRanges.Pool.PoolType.ONU_ID)
+                        .setSharing(DeviceResourceRanges.Pool.SharingType.DEDICATED_PER_INTF)
                         .setStart(1)
                         .setEnd(128)
                         .build();
 
-        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool allocIdPool =
-                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
-                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.ALLOC_ID)
-                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
+        DeviceResourceRanges.Pool allocIdPool =
+                DeviceResourceRanges.Pool.newBuilder()
+                        .setType(DeviceResourceRanges.Pool.PoolType.ALLOC_ID)
+                        .setSharing(DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
                         .setStart(1024)
                         .setEnd(16383)
                         .build();
 
-        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool gemportIdPool =
-                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
-                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.GEMPORT_ID)
-                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
+        DeviceResourceRanges.Pool gemportIdPool =
+                DeviceResourceRanges.Pool.newBuilder()
+                        .setType(DeviceResourceRanges.Pool.PoolType.GEMPORT_ID)
+                        .setSharing(DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
                         .setStart(1024)
                         .setEnd(65535)
                         .build();
 
-        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool flowIdPool =
-                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
-                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.FLOW_ID)
-                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_ALL_TECH)
+        DeviceResourceRanges.Pool flowIdPool =
+                DeviceResourceRanges.Pool.newBuilder()
+                        .setType(DeviceResourceRanges.Pool.PoolType.FLOW_ID)
+                        .setSharing(DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_ALL_TECH)
                         .setStart(1)
                         .setEnd(16383)
                         .build();
 
-        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges ranges =
-                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.newBuilder()
+        DeviceResourceRanges ranges =
+                DeviceResourceRanges.newBuilder()
                         .addIntfIds(0) // PON interface 0
                         .setTechnology(VolthaOpenOLT.PONTechnology.GPON)
                         .addPools(onuIdPool)
