@@ -15,11 +15,11 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>24</maven.compiler.source>
-        <maven.compiler.target>24</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <jackson.version>2.19.2</jackson.version>
         <jakarta.validation.version>3.1.1</jakarta.validation.version>
-        <graalvm.version>24.0.2</graalvm.version>
+        <graalvm.version>21.0.8</graalvm.version>
         <native.maven.plugin.version>0.10.2</native.maven.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
