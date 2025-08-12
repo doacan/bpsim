@@ -182,7 +182,7 @@
 </header>
 
 <div class="stats-info" id="statsInfo">
-    Toplam Cihaz: 0
+    Total Devices: 0
 </div>
 
 <main class="grid" id="deviceGrid">
@@ -206,7 +206,7 @@
     ws.onmessage = event => {
         const data = JSON.parse(event.data);
 
-        // Storm status mesajı mı kontrol et
+        // Check if it's a storm status message
         if (data.type === 'storm_status') {
             handleStormStatusUpdate(data);
             return;
@@ -260,7 +260,7 @@
 
         updateStormButton(stormData.status, stormData.params);
 
-        // Notification göster (opsiyonel)
+        // Show notification (optional)
         if (stormData.message) {
             const notificationType = stormData.status === 'error' ? 'error' : 'success';
             showNotification(stormData.message, notificationType);
@@ -300,11 +300,11 @@
 
     ws.onerror = (error) => {
         console.error("WebSocket error:", error);
-        showNotification("WebSocket bağlantı hatası", "error");
+        showNotification("WebSocket connection error", "error");
     };
 
     function updateStats() {
-        statsInfo.textContent = `Toplam Cihaz: ${deviceCount}`;
+        statsInfo.textContent = `Total Devices: ${deviceCount}`;
     }
 
     function showNotification(message, type = "success") {
@@ -318,12 +318,12 @@
     }
 
     async function clearAllDevices() {
-        if (!confirm("Tüm cihazları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.")) {
+        if (!confirm("Are you sure you want to clear all devices? This action cannot be undone.")) {
             return;
         }
 
         clearBtn.disabled = true;
-        clearBtn.textContent = "Temizleniyor...";
+        clearBtn.textContent = "Clearing...";
 
         try {
             const response = await fetch('/dhcp/clear-all', {
@@ -341,16 +341,16 @@
                 deviceCount = 0;
                 updateStats();
 
-                showNotification(`Başarıyla temizlendi: ${result.clearedCount} cihaz silindi`, "success");
+                showNotification(`Successfully cleared: ${result.clearedCount} devices deleted`, "success");
             } else {
-                showNotification(`Hata: ${result.message || result.error}`, "error");
+                showNotification(`Error: ${result.message || result.error}`, "error");
             }
         } catch (error) {
             console.error('Error clearing devices:', error);
-            showNotification("Temizleme işlemi sırasında hata oluştu", "error");
+            showNotification("An error occurred during the clearing process", "error");
         } finally {
             clearBtn.disabled = false;
-            clearBtn.textContent = "Tümünü Temizle";
+            clearBtn.textContent = "Clear All";
         }
     }
 </script>
