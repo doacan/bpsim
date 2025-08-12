@@ -66,6 +66,20 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     private final Object stormLock = new Object();
     private CompletableFuture<Void> currentStormFuture = null;
 
+    // Add these private fields at the class level (with other fields)
+    private final Random heartbeatRandom = new Random();
+    private final int heartbeatSignature = heartbeatRandom.nextInt();
+
+    // Device info fields - initialized once at startup
+    private final String deviceVendor = "Argela";
+    private final String deviceModel = "DHCP-SIM-" + heartbeatRandom.nextInt(1000);
+    private final String hardwareVersion = "1." + heartbeatRandom.nextInt(10);
+    private final String firmwareVersion = "2." + heartbeatRandom.nextInt(100) + "." + heartbeatRandom.nextInt(100);
+    private final String deviceId = "DHCP-DEV-" + System.currentTimeMillis();
+    private final String deviceSerialNumber = "SN" + heartbeatRandom.nextInt(999999999);
+    private final int groupIdStart = 1000 + heartbeatRandom.nextInt(1000);
+    private final int groupIdEnd = groupIdStart + 100;
+
     // Initialize MAC addresses from configuration
     private void initializeMacAddresses() {
         if (serverMac == null) {
@@ -109,6 +123,84 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 });
 
         responseObserver.onNext(Empty.newBuilder().build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void heartbeatCheck(Empty request, StreamObserver<VolthaOpenOLT.Heartbeat> responseObserver) {
+        VolthaOpenOLT.Heartbeat heartbeat = VolthaOpenOLT.Heartbeat.newBuilder()
+                .setHeartbeatSignature(heartbeatSignature)
+                .build();
+
+        responseObserver.onNext(heartbeat);
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getDeviceInfo(Empty request, StreamObserver<VolthaOpenOLT.DeviceInfo> responseObserver) {
+        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool onuIdPool =
+                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
+                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.ONU_ID)
+                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.DEDICATED_PER_INTF)
+                        .setStart(1)
+                        .setEnd(128)
+                        .build();
+
+        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool allocIdPool =
+                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
+                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.ALLOC_ID)
+                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
+                        .setStart(1024)
+                        .setEnd(16383)
+                        .build();
+
+        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool gemportIdPool =
+                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
+                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.GEMPORT_ID)
+                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_SAME_TECH)
+                        .setStart(1024)
+                        .setEnd(65535)
+                        .build();
+
+        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool flowIdPool =
+                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.newBuilder()
+                        .setType(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.PoolType.FLOW_ID)
+                        .setSharing(VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.Pool.SharingType.SHARED_BY_ALL_INTF_ALL_TECH)
+                        .setStart(1)
+                        .setEnd(16383)
+                        .build();
+
+        VolthaOpenOLT.DeviceInfo.DeviceResourceRanges ranges =
+                VolthaOpenOLT.DeviceInfo.DeviceResourceRanges.newBuilder()
+                        .addIntfIds(0) // PON interface 0
+                        .setTechnology(VolthaOpenOLT.PONTechnology.GPON)
+                        .addPools(onuIdPool)
+                        .addPools(allocIdPool)
+                        .addPools(gemportIdPool)
+                        .addPools(flowIdPool)
+                        .build();
+
+        VolthaOpenOLT.DeviceInfo deviceInfo = VolthaOpenOLT.DeviceInfo.newBuilder()
+                .setVendor(deviceVendor)
+                .setModel(deviceModel)
+                .setHardwareVersion(hardwareVersion)
+                .setFirmwareVersion(firmwareVersion)
+                .setDeviceId(deviceId)
+                .setDeviceSerialNumber(deviceSerialNumber)
+                .setPreviouslyConnected(false)
+                .setIgmpcaPreviouslyConnected(false)
+                .setPgwPreviouslyConnected(false)
+                .setOmciPreviouslyConnected(false)
+                .setGroupIdStart(groupIdStart)
+                .setGroupIdEnd(groupIdEnd)
+                .setPonPorts(ponPortCount)
+                .setNniPorts(1)
+                .setTechnology("GPON")
+                .setSlotNumber(0)
+                .addRanges(ranges)
+                .build();
+
+        responseObserver.onNext(deviceInfo);
         responseObserver.onCompleted();
     }
 
