@@ -80,6 +80,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     private final String deviceSerialNumber = "SN" + heartbeatRandom.nextInt(999999999);
     private final int groupIdStart = 1000 + heartbeatRandom.nextInt(1000);
     private final int groupIdEnd = groupIdStart + 100;
+    private boolean pgwPreviouslyConnected = false;
 
     // Initialize MAC addresses from configuration
     private void initializeMacAddresses() {
@@ -100,6 +101,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     @Override
     public void enablePacketIndication(Empty request, StreamObserver<Indication> responseObserver) {
         clientStreams.add(responseObserver);
+        pgwPreviouslyConnected = true;
         System.out.println("Client connected to PacketIndication stream.");
     }
 
@@ -190,7 +192,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 .setDeviceSerialNumber(deviceSerialNumber)
                 .setPreviouslyConnected(false)
                 .setIgmpcaPreviouslyConnected(false)
-                .setPgwPreviouslyConnected(false)
+                .setPgwPreviouslyConnected(pgwPreviouslyConnected)
                 .setOmciPreviouslyConnected(false)
                 .setGroupIdStart(groupIdStart)
                 .setGroupIdEnd(groupIdEnd)
