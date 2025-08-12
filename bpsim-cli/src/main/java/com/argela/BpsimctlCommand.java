@@ -388,7 +388,7 @@ class BpsimctlCommand implements Runnable {
         @Parameters(index = "1", description = "Interval in seconds - use either rate or intervalSec", arity = "0..1")
         Double intervalSec;
 
-        @Option(names = {"-u", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
         String serverUrl = "http://localhost:8080";
 
         @Override
@@ -466,7 +466,7 @@ class BpsimctlCommand implements Runnable {
             @Parameters(index = "4", description = "C-Tag")
             int cTag;
 
-            @Option(names = {"-u", "--url"}, description = "Server URL (default: http://localhost:8080)")
+            @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
             String serverUrl = "http://localhost:8080";
 
             protected void sendDhcpRequest(String packetType) {
