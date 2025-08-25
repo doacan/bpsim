@@ -8,7 +8,9 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -277,6 +279,31 @@ public class DhcpRestApi {
 
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to cancel storm\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
+
+    /**
+     * Gets system configuration information
+     * @return Response containing PON port count, ONU port count, and total device capacity
+     */
+    @GET
+    @Path("/info")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getSystemInfo() {
+        try {
+            Map<String, Object> info = new HashMap<>();
+
+            info.put("ponPortCount", ponPortCount);
+            info.put("onuPortCount", onuPortCount);
+            info.put("totalDeviceCapacity", ponPortCount * onuPortCount);
+
+            return Response.ok(info).build();
+
+        } catch (Exception e) {
+            logger.error("Error getting system info: {}", e.getMessage(), e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to get system info\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();
         }
     }

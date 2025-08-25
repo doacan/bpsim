@@ -120,11 +120,11 @@ public class DeviceInfo {
         if (!isDhcpCompleted() || dhcpStartTime == null) return null;
 
         if (dhcpCompletionTime != null) {
-            // Completion time set edilmişse onu kullan
+            // If completion time is set, use it
             return java.time.Duration.between(dhcpStartTime, dhcpCompletionTime).toMillis();
         }
 
-        // Backward compatibility için
+        // For backward compatibility
         return java.time.Duration.between(dhcpStartTime, Instant.now()).toMillis();
     }
 

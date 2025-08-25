@@ -317,6 +317,40 @@
         }, 3000);
     }
 
+    stormBtn.addEventListener('click', handleStormButtonClick);
+
+    function handleStormButtonClick() {
+        if (stormStatus === 'progress') {
+            cancelStorm();
+        }
+    }
+
+    async function cancelStorm() {
+        if (!confirm("Are you sure you want to cancel the storm?")) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/dhcp/storm/cancel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showNotification("Storm cancelled successfully", "success");
+            } else {
+                showNotification(`Storm cancellation error: ${result.error}`, "error");
+            }
+        } catch (error) {
+            console.error('Storm cancellation error:', error);
+            showNotification("Error occurred during storm cancellation", "error");
+        }
+    }
+
     async function clearAllDevices() {
         if (!confirm("Are you sure you want to clear all devices? This action cannot be undone.")) {
             return;

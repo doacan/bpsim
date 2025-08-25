@@ -26,7 +26,8 @@ import java.util.Map;
         subcommands = {
                 BpsimctlCommand.DhcpCommand.class,
                 BpsimctlCommand.DhcpListCommand.class,
-                BpsimctlCommand.DhcpStormCommand.class
+                BpsimctlCommand.DhcpStormCommand.class,
+                BpsimctlCommand.InfoCommand.class
         })
 class BpsimctlCommand implements Runnable {
     public static void main(String[] args) {
@@ -311,14 +312,14 @@ class BpsimctlCommand implements Runnable {
                 String state = row.get("state") != null ? row.get("state").toString() : "";
 
                 if ("ACKNOWLEDGED".equals(state)) {
-                    // ACKNOWLEDGED durumunda completion time'ı kullan
+                    // For ACKNOWLEDGED state, use completion time
                     Object completionTimeObj = row.get("dhcpCompletionTimeMs");
                     if (completionTimeObj != null) {
                         return Long.valueOf(completionTimeObj.toString());
                     }
                 }
 
-                // Diğer durumlar için başlangıçtan şu ana kadar olan süreyi hesapla
+                // For other states, calculate time from start to now
                 Object dhcpStartTimeObj = row.get("dhcpStartTime");
                 if (dhcpStartTimeObj != null) {
                     String dhcpStartTimeStr = dhcpStartTimeObj.toString();
@@ -342,12 +343,12 @@ class BpsimctlCommand implements Runnable {
         private int[] calculateColumnWidths(List<Map<String, Object>> data, String[] columns, int terminalWidth) {
             int[] maxWidths = new int[columns.length];
 
-            // Header uzunluklarını başlangıç olarak al
+            // Get header lengths as starting point
             for (int i = 0; i < columns.length; i++) {
                 maxWidths[i] = getFriendlyColumnName(columns[i]).length();
             }
 
-            // Data'daki en uzun değerleri bul
+            // Find longest values in data
             for (Map<String, Object> row : data) {
                 for (int i = 0; i < columns.length; i++) {
                     String formattedValue = formatColumnValue(row, columns[i], Integer.MAX_VALUE);
@@ -357,24 +358,24 @@ class BpsimctlCommand implements Runnable {
                 }
             }
 
-            // Minimum ve maksimum genişlik sınırları
+            // Minimum and maximum width limits
             for (int i = 0; i < maxWidths.length; i++) {
-                maxWidths[i] = Math.max(maxWidths[i], 4); // Minimum 4 karakter
-                maxWidths[i] = Math.min(maxWidths[i], 25); // Maksimum 25 karakter
+                maxWidths[i] = Math.max(maxWidths[i], 4); // Minimum 4 characters
+                maxWidths[i] = Math.min(maxWidths[i], 25); // Maximum 25 characters
             }
 
-            // Toplam genişlik hesapla (border'lar için +3 her sütun için)
+            // Calculate total width (borders require +3 for each column)
             int totalWidth = 0;
             for (int width : maxWidths) {
                 totalWidth += width + 3; // 3 = | + space + space
             }
-            totalWidth += 1; // Son border için
+            totalWidth += 1; // For final border
 
-            // Terminal genişliğini aşıyorsa, sütun genişliklerini orantılı olarak küçült
+            // If exceeds terminal width, proportionally reduce column widths
             if (totalWidth > terminalWidth) {
                 double ratio = (double)(terminalWidth - (columns.length * 3) - 1) / (totalWidth - (columns.length * 3) - 1);
                 for (int i = 0; i < maxWidths.length; i++) {
-                    maxWidths[i] = Math.max(3, (int)(maxWidths[i] * ratio)); // Minimum 3 karakter
+                    maxWidths[i] = Math.max(3, (int)(maxWidths[i] * ratio)); // Minimum 3 characters
                 }
             }
 
@@ -535,6 +536,49 @@ class BpsimctlCommand implements Runnable {
             @Override
             public void run() {
                 sendDhcpRequest("ACK");
+            }
+        }
+    }
+
+    @Command(name = "info",
+            mixinStandardHelpOptions = true,
+            description = "Show system configuration information")
+    static class InfoCommand implements Runnable {
+
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        String serverUrl = "http://localhost:8080";
+
+        @Override
+        public void run() {
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(serverUrl + "/dhcp/info"))
+                        .header("Accept", "application/json")
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() != 200) {
+                    System.err.println("Error: HTTP " + response.statusCode());
+                    return;
+                }
+
+                // JSON parse
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> info = mapper.readValue(response.body(), Map.class);
+
+                // Display information
+                System.out.println("BPSIM System Configuration:");
+                System.out.println("==========================");
+                System.out.println("PON Ports: " + info.get("ponPortCount"));
+                System.out.println("ONU Ports: " + info.get("onuPortCount"));
+                System.out.println("Total Devices Capacity: " + info.get("totalDeviceCapacity"));
+
+            } catch (Exception e) {
+                System.err.println("Error getting system info: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
