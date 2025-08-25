@@ -256,11 +256,21 @@ public class DhcpRestApi {
     @Produces(MediaType.APPLICATION_JSON)
     public Response cancelStorm() {
         try {
+            if (!grpcServer.isStormInProgress()) {
+                return Response.ok()
+                        .entity("{\"status\": \"No active storm to cancel\"}")
+                        .build();
+            }
+
             grpcServer.cancelStorm();
+
             return Response.ok()
-                    .entity("{\"status\": \"Storm cancelled successfully\"}")
+                    .entity("{\"status\": \"Storm cancellation initiated\"}")
                     .build();
+
         } catch (Exception e) {
+            System.err.println("Error cancelling storm: " + e.getMessage());
+            e.printStackTrace();
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to cancel storm\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();

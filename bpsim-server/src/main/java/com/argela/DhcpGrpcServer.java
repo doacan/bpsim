@@ -1065,21 +1065,28 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 int deviceIndex = 0;
 
                 // Loop over PON ports
-                for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
+                outerLoop: for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
                     int currentPonPort = ponPortStart + ponIndex;
 
                     // Loop over ONU ports
                     for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
+                        // ÖNEMLİ: Her döngüde interrupt ve cancel durumunu kontrol et
+                        synchronized (stormLock) {
+                            if (!stormInProgress) {
+                                System.out.println("Storm cancelled at device " + deviceIndex);
+                                break outerLoop;
+                            }
+                        }
+
+                        if (Thread.currentThread().isInterrupted()) {
+                            System.out.println("Storm thread interrupted at device " + deviceIndex);
+                            break outerLoop;
+                        }
+
                         int currentOnuPort = onuPortStart + onuIndex;
                         deviceIndex++;
 
                         try {
-                            // Thread interruption check
-                            if (Thread.currentThread().isInterrupted()) {
-                                System.out.println("Storm interrupted at device " + deviceIndex);
-                                return;
-                            }
-
                             // Fixed and random parameters
                             int uniId = 0; // UNI is always 0
                             int gemPort = 1024 + random.nextInt(2048); // GEM port random
@@ -1106,13 +1113,16 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                             // Apply delay if not the last device
                             if (deviceIndex < totalDevices) {
-                                Thread.sleep(delayMs);
+                                // ÖNEMLİ: InterruptedException yakalayarak cancel durumunu handle et
+                                try {
+                                    Thread.sleep(delayMs);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    System.out.println("Storm sleep interrupted at device " + deviceIndex);
+                                    break outerLoop;
+                                }
                             }
 
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            System.out.println("Storm interrupted at device " + deviceIndex);
-                            return;
                         } catch (Exception e) {
                             failureCount++;
                             System.err.println("Error sending device " + deviceIndex +
@@ -1197,10 +1207,17 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         synchronized (stormLock) {
             if (stormInProgress && currentStormFuture != null) {
                 System.out.println("Cancelling DHCP storm...");
-                currentStormFuture.cancel(true);
+
+                // Önce flag'i false yap
                 stormInProgress = false;
+
+                // Sonra future'ı cancel et
+                boolean cancelled = currentStormFuture.cancel(true); // interrupt if running
+
+                System.out.println("DHCP storm cancellation result: " + cancelled);
+
+                // Reset state
                 currentStormFuture = null;
-                System.out.println("DHCP storm cancelled");
 
                 DeviceWebSocket.broadcastStormStatus(
                         "ready",
@@ -1209,7 +1226,19 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                         "Storm cancelled"
                 );
             } else {
-                System.out.println("No active storm to cancel");
+                System.out.println("No active storm to cancel (stormInProgress: " + stormInProgress +
+                        ", currentStormFuture: " + (currentStormFuture != null) + ")");
+
+                // Ensure consistent state
+                stormInProgress = false;
+                currentStormFuture = null;
+
+                DeviceWebSocket.broadcastStormStatus(
+                        "ready",
+                        null,
+                        null,
+                        "No active storm"
+                );
             }
         }
     }
