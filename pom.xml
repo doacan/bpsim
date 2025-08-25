@@ -8,11 +8,6 @@
     <artifactId>bpsim</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <modules>
-        <module>bpsim-common</module>
-        <module>bpsim-server</module>
-        <module>bpsim-cli</module>
-    </modules>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -23,4 +18,28 @@
         <native.maven.plugin.version>0.10.2</native.maven.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <profiles>
+        <!-- Full build profile (default) -->
+        <profile>
+            <id>full</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <modules>
+                <module>bpsim-server</module>
+                <module>bpsim-cli</module>
+                <module>bpsim-common</module>
+            </modules>
+        </profile>
+
+        <!-- Docker build profile (CLI hariç) -->
+        <profile>
+            <id>docker</id>
+            <modules>
+                <module>bpsim-server</module>
+                <module>bpsim-common</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

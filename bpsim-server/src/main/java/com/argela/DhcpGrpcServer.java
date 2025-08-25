@@ -441,7 +441,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         String confirmedIPStr = IPv4.fromIPv4Address(confirmedIP);
 
         device.setIpAddress(confirmedIPStr);
-        device.setState("ACKNOWLEDGED"); // IP address successfully assigned
+        device.setState("ACKNOWLEDGED");
+        device.setDhcpCompletionTime(Instant.now());
         device.setLeaseStartTime(Instant.now());
 
         // Update network configuration (by VLAN)
@@ -450,10 +451,6 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         device.setGateway(networkConfig.getGateway());
         device.setServerIdentifier(networkConfig.getServerIdentifier());
         device.setSubnetMask(networkConfig.getSubnetMask());
-
-        if (device.getDhcpStartTime() != null) {
-            long dhcpDuration = device.getDhcpCompletionTimeMs();
-        }
 
         deviceService.updateDevice(device);
     }

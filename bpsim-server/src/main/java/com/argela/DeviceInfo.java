@@ -21,6 +21,7 @@ public class DeviceInfo {
     private int onuId;
     private Instant leaseStartTime;
     private Instant dhcpStartTime;
+    private Instant dhcpCompletionTime;
 
     // Constructor
     public DeviceInfo(int id, String clientMac, String ipAddress, String requiredIp, String state,
@@ -45,6 +46,7 @@ public class DeviceInfo {
         this.onuId = onuId;
         this.leaseStartTime = leaseStartTime;
         this.dhcpStartTime = Instant.now();
+        this.dhcpCompletionTime = null;
     }
 
     // Getters and Setters
@@ -102,6 +104,9 @@ public class DeviceInfo {
     public Instant getDhcpStartTime() { return dhcpStartTime; }
     public void setDhcpStartTime(Instant dhcpStartTime) { this.dhcpStartTime = dhcpStartTime; }
 
+    public Instant getDhcpCompletionTime() { return dhcpCompletionTime; }
+    public void setDhcpCompletionTime(Instant dhcpCompletionTime) { this.dhcpCompletionTime = dhcpCompletionTime; }
+
     public long getDhcpDurationMs() {
         if (dhcpStartTime == null) return 0;
         return java.time.Duration.between(dhcpStartTime, Instant.now()).toMillis();
@@ -113,6 +118,13 @@ public class DeviceInfo {
 
     public Long getDhcpCompletionTimeMs() {
         if (!isDhcpCompleted() || dhcpStartTime == null) return null;
+
+        if (dhcpCompletionTime != null) {
+            // Completion time set edilmişse onu kullan
+            return java.time.Duration.between(dhcpStartTime, dhcpCompletionTime).toMillis();
+        }
+
+        // Backward compatibility için
         return java.time.Duration.between(dhcpStartTime, Instant.now()).toMillis();
     }
 

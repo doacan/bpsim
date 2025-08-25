@@ -3,6 +3,7 @@ package com.argela;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import picocli.CommandLine;
@@ -32,6 +33,9 @@ class BpsimctlCommand implements Runnable {
         int exitCode = new CommandLine(new BpsimctlCommand()).execute(args);
         System.exit(exitCode);
     }
+
+    @ConfigProperty(name = "bpsim.server.port", defaultValue = "8080")
+    String serverPort;
 
     @Override
     public void run() {
@@ -304,25 +308,25 @@ class BpsimctlCommand implements Runnable {
 
         private Long getDhcpDurationMs(Map<String, Object> row) {
             try {
-                Object dhcpStartTimeObj = row.get("dhcpStartTime");
                 String state = row.get("state") != null ? row.get("state").toString() : "";
 
+                if ("ACKNOWLEDGED".equals(state)) {
+                    // ACKNOWLEDGED durumunda completion time'ı kullan
+                    Object completionTimeObj = row.get("dhcpCompletionTimeMs");
+                    if (completionTimeObj != null) {
+                        return Long.valueOf(completionTimeObj.toString());
+                    }
+                }
+
+                // Diğer durumlar için başlangıçtan şu ana kadar olan süreyi hesapla
+                Object dhcpStartTimeObj = row.get("dhcpStartTime");
                 if (dhcpStartTimeObj != null) {
                     String dhcpStartTimeStr = dhcpStartTimeObj.toString();
                     java.time.Instant dhcpStartTime = java.time.Instant.parse(dhcpStartTimeStr);
-
-                    if ("ACKNOWLEDGED".equals(state)) {
-                        Object completionTimeObj = row.get("dhcpCompletionTimeMs");
-                        if (completionTimeObj != null) {
-                            return Long.valueOf(completionTimeObj.toString());
-                        }
-                    }
-
                     return java.time.Duration.between(dhcpStartTime, java.time.Instant.now()).toMillis();
                 }
             } catch (Exception e) {
-                System.err.println("Error parsing DHCP start time: " + e.getMessage());
-                e.printStackTrace();
+                System.err.println("Error parsing DHCP duration: " + e.getMessage());
             }
             return null;
         }
