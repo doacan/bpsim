@@ -114,7 +114,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     public void onuPacketOut(VolthaOpenOLT.OnuPacket request, StreamObserver<Empty> responseObserver) {
         CompletableFuture.runAsync(() -> processOnuPacket(request), managedExecutor)
                 .exceptionally(throwable -> {
-                    System.err.println("Error processing Onu packet: " + throwable.getMessage());
+                    logger.error("Error processing Onu packet: {}", throwable.getMessage(), throwable);
                     return null;
                 });
 
@@ -126,7 +126,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     public void uplinkPacketOut(VolthaOpenOLT.UplinkPacket request, StreamObserver<Empty> responseObserver) {
         CompletableFuture.runAsync(() -> processUplinkPacket(request), managedExecutor)
                 .exceptionally(throwable -> {
-                    System.err.println("Error processing Uplink packet: " + throwable.getMessage());
+                    logger.error("Error processing Uplink packet: {}", throwable.getMessage(), throwable);
                     return null;
                 });
 
@@ -257,14 +257,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     logger.debug("Unexpected DHCP message type in onuPacketOut: {}", messageType);
                             }
                         } else {
-                            System.err.println("Device not found for XID: " + xid);
+                            logger.warn("Device not found for XID: {}", xid);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error analyzing DHCP packet in onuPacketOut: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error analyzing DHCP packet in onuPacketOut: {}", e.getMessage(), e);
         }
     }
 
@@ -313,14 +312,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     logger.debug("Unexpected DHCP message type in uplinkPacketOut: {}", messageType);
                             }
                         } else {
-                            System.err.println("Device not found for XID: " + xid);
+                            logger.warn("Device not found for XID: {}", xid);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error analyzing DHCP packet in uplinkPacketOut: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error analyzing DHCP packet in uplinkPacketOut: {}", e.getMessage(), e);
         }
     }
 
@@ -699,7 +697,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 case "ack" -> sendDhcpAck(device);
             }
         } else {
-            System.err.println("Unknown packet type: " + request.getPacketType());
+            logger.error("Unknown packet type: {}", request.getPacketType());
         }
     }
 
@@ -977,7 +975,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      */
     private void sendPacketIndication(DeviceInfo device, byte[] dhcpPacket) {
         if (dhcpPacket == null || dhcpPacket.length == 0) {
-            System.err.println("Invalid DHCP packet data");
+            logger.error("Invalid DHCP packet data");
             return;
         }
         try {
@@ -1010,7 +1008,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                         stream.onNext(indication);
                         return false; // Stream is working
                     } catch (Exception e) {
-                        System.err.println("Client stream error, removing: " + e.getMessage());
+                        logger.warn("Client stream error, removing: {}", e.getMessage());
                         try {
                             stream.onError(e);
                         } catch (Exception ignored) {}
@@ -1030,6 +1028,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @param intervalSec Interval between devices in seconds (if provided)
      */
     public void simulateDhcpStorm(Integer rate, Double intervalSec) {
+        logger.info("Starting DHCP storm simulation with rate: {}, intervalSec: {}", rate, intervalSec);
+
         synchronized (stormLock) {
             if (stormInProgress) {
                 throw new RuntimeException("DHCP storm is already in progress. Please wait for current storm to complete.");
@@ -1070,11 +1070,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                 // Loop over PON ports
                 outerLoop: for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
+                    logger.debug("Starting storm loop for {} PON ports and {} ONU ports", ponPortCount, onuPortCount);
+
                     int currentPonPort = ponPortStart + ponIndex;
 
                     // Loop over ONU ports
                     for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
-                        // ÖNEMLİ: Her döngüde interrupt ve cancel durumunu kontrol et
                         synchronized (stormLock) {
                             if (!stormInProgress) {
                                 logger.debug("Storm cancelled at device {}", deviceIndex);
