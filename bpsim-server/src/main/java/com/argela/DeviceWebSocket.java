@@ -47,6 +47,11 @@ public class DeviceWebSocket {
         sessions.remove(session);
     }
 
+    @OnError
+    public void onError(Session session, Throwable throwable) {
+        sessions.remove(session);
+    }
+
     /**
      * Broadcasts device information to all connected WebSocket clients
      * @param device The device information to broadcast

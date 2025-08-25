@@ -20,7 +20,6 @@
     </properties>
 
     <profiles>
-        <!-- Full build profile (default) -->
         <profile>
             <id>full</id>
             <activation>
@@ -29,15 +28,6 @@
             <modules>
                 <module>bpsim-server</module>
                 <module>bpsim-cli</module>
-                <module>bpsim-common</module>
-            </modules>
-        </profile>
-
-        <!-- Docker build profile (CLI hariç) -->
-        <profile>
-            <id>docker</id>
-            <modules>
-                <module>bpsim-server</module>
                 <module>bpsim-common</module>
             </modules>
         </profile>
