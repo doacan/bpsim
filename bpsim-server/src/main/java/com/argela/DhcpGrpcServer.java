@@ -23,8 +23,13 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @GrpcService
 public class DhcpGrpcServer extends OpenoltImplBase {
+    private static final Logger logger = LoggerFactory.getLogger(DhcpGrpcServer.class);
+
     @Inject
     DeviceService deviceService;
 
@@ -102,7 +107,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     public void enablePacketIndication(Empty request, StreamObserver<Indication> responseObserver) {
         clientStreams.add(responseObserver);
         pgwPreviouslyConnected = true;
-        System.out.println("Client connected to PacketIndication stream.");
+        logger.info("Client connected to PacketIndication stream.");
     }
 
     @Override
@@ -249,7 +254,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     handleReceivedAck(device, dhcpPacket, request);
                                     break;
                                 default:
-                                    System.out.println("Unexpected DHCP message type in onuPacketOut: " + messageType);
+                                    logger.debug("Unexpected DHCP message type in onuPacketOut: {}", messageType);
                             }
                         } else {
                             System.err.println("Device not found for XID: " + xid);
@@ -305,7 +310,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     handleReceivedRequest(device, dhcpPacket, request);
                                     break;
                                 default:
-                                    System.out.println("Unexpected DHCP message type in uplinkPacketOut: " + messageType);
+                                    logger.debug("Unexpected DHCP message type in uplinkPacketOut: {}", messageType);
                             }
                         } else {
                             System.err.println("Device not found for XID: " + xid);
@@ -1015,8 +1020,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
             }
 
         } catch (Exception e) {
-            System.err.println("Error creating packet indication: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error creating packet indication: {}", e.getMessage(), e);
         }
     }
 
@@ -1053,11 +1057,11 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
         currentStormFuture = CompletableFuture.runAsync(() -> {
             try {
-                System.out.println("DHCP Storm started - Rate: " +
+                logger.info("DHCP Storm started - Rate: {}",
                         (rate != null ? rate + " devices/sec" : "1 device per " + intervalSec + " seconds"));
-                System.out.println("Total devices to create: " + totalDevices +
-                        " (PON: " + ponPortStart + "-" + (ponPortStart + ponPortCount - 1) +
-                        ", ONU: " + onuPortStart + "-" + (onuPortStart + onuPortCount - 1) + ")");
+                logger.info("Total devices to create: {} (PON: {}-{}, ONU: {}-{})",
+                        totalDevices, ponPortStart, ponPortStart + ponPortCount - 1,
+                        onuPortStart, onuPortStart + onuPortCount - 1);
 
                 Random random = new Random();
                 int successCount = 0;
@@ -1073,13 +1077,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                         // ÖNEMLİ: Her döngüde interrupt ve cancel durumunu kontrol et
                         synchronized (stormLock) {
                             if (!stormInProgress) {
-                                System.out.println("Storm cancelled at device " + deviceIndex);
+                                logger.debug("Storm cancelled at device {}", deviceIndex);
                                 break outerLoop;
                             }
                         }
 
                         if (Thread.currentThread().isInterrupted()) {
-                            System.out.println("Storm thread interrupted at device " + deviceIndex);
+                            logger.debug("Storm thread interrupted at device {}", deviceIndex);
                             break outerLoop;
                         }
 
@@ -1106,9 +1110,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                             // Progress log (every 50 devices or at PON port change)
                             if (deviceIndex % 50 == 0 || onuIndex == onuPortCount - 1) {
-                                System.out.println("Storm progress: " + deviceIndex + "/" + totalDevices +
-                                        " devices sent (PON: " + currentPonPort + ", ONU: " + currentOnuPort +
-                                        ") - Success: " + successCount + ", Failed: " + failureCount);
+                                logger.info("Storm progress: {}/{} devices sent (PON: {}, ONU: {}) - Success: {}, Failed: {}",
+                                        deviceIndex, totalDevices, currentPonPort, currentOnuPort, successCount, failureCount);
                             }
 
                             // Apply delay if not the last device
@@ -1118,25 +1121,25 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                                     Thread.sleep(delayMs);
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
-                                    System.out.println("Storm sleep interrupted at device " + deviceIndex);
+                                    logger.debug("Storm sleep interrupted at device {}", deviceIndex);
                                     break outerLoop;
                                 }
                             }
 
                         } catch (Exception e) {
                             failureCount++;
-                            System.err.println("Error sending device " + deviceIndex +
-                                    " (PON: " + currentPonPort + ", ONU: " + currentOnuPort + "): " + e.getMessage());
+                            logger.error("Error sending device {} (PON: {}, ONU: {}): {}",
+                                    deviceIndex, currentPonPort, currentOnuPort, e.getMessage());
                             // Continue storm, just skip this device
                         }
                     }
 
                     // Log when each PON port is completed
-                    System.out.println("PON port " + currentPonPort + " completed (" + onuPortCount + " ONUs)");
+                    logger.info("PON port {} completed ({} ONUs)", currentPonPort, onuPortCount);
                 }
 
-                System.out.println("DHCP Storm completed: " + successCount + " devices sent successfully, " +
-                        failureCount + " failed out of " + totalDevices + " total devices");
+                logger.info("DHCP Storm completed: {} devices sent successfully, {} failed out of {} total devices",
+                        successCount, failureCount, totalDevices);
 
                 DeviceWebSocket.broadcastStormStatus(
                         "ready",
@@ -1145,7 +1148,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                         "Storm completed successfully"
                 );
             } catch (Exception e) {
-                System.err.println("Fatal error during DHCP storm: " + e.getMessage());
+                logger.error("Fatal error during DHCP storm: {}", e.getMessage(), e);
                 e.printStackTrace();
                 DeviceWebSocket.broadcastStormStatus(
                         "error",
@@ -1158,13 +1161,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                     stormInProgress = false;
                     currentStormFuture = null;
                 }
-                System.out.println("DHCP Storm session ended");
+                logger.info("DHCP Storm session ended");
             }
         }, managedExecutor);
 
         // Handle future for exception handling
         currentStormFuture.exceptionally(throwable -> {
-            System.err.println("Storm execution error: " + throwable.getMessage());
+            logger.error("Storm execution error: {}", throwable.getMessage());
             DeviceWebSocket.broadcastStormStatus(
                     "error",
                     null,
@@ -1206,7 +1209,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     public void cancelStorm() {
         synchronized (stormLock) {
             if (stormInProgress && currentStormFuture != null) {
-                System.out.println("Cancelling DHCP storm...");
+                logger.info("Cancelling DHCP storm...");
 
                 // Önce flag'i false yap
                 stormInProgress = false;
@@ -1214,7 +1217,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 // Sonra future'ı cancel et
                 boolean cancelled = currentStormFuture.cancel(true); // interrupt if running
 
-                System.out.println("DHCP storm cancellation result: " + cancelled);
+                logger.info("DHCP storm cancellation result: {}", cancelled);
 
                 // Reset state
                 currentStormFuture = null;
@@ -1226,8 +1229,9 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                         "Storm cancelled"
                 );
             } else {
-                System.out.println("No active storm to cancel (stormInProgress: " + stormInProgress +
-                        ", currentStormFuture: " + (currentStormFuture != null) + ")");
+                logger.debug("No active storm to cancel (stormInProgress: {}, currentStormFuture: {})",
+                        stormInProgress, (currentStormFuture != null));
+
 
                 // Ensure consistent state
                 stormInProgress = false;

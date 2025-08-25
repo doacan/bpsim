@@ -9,8 +9,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @ApplicationScoped
 public class VlanIPPoolManager {
+    private static final Logger logger = LoggerFactory.getLogger(VlanIPPoolManager.class);
+
     @ConfigProperty(name = "dhcp.network.base.ip", defaultValue = "10.0.0.0")
     String baseNetworkIP;
 
@@ -53,9 +58,9 @@ public class VlanIPPoolManager {
         int maxSupportedVlans = calculateMaxSupportedVlans();
 
         if (maxSupportedVlans < MAX_VLAN) {
-            System.out.println("  WARNING: Current configuration supports only " + maxSupportedVlans +
-                    " VLANs, but system allows up to " + MAX_VLAN);
-            System.out.println("  Consider using a smaller subnet mask or different base network");
+            logger.warn("WARNING: Current configuration supports only {} VLANs, but system allows up to {}",
+                    maxSupportedVlans, MAX_VLAN);
+            logger.warn("Consider using a smaller subnet mask or different base network");
         }
     }
 
@@ -609,7 +614,7 @@ public class VlanIPPoolManager {
                     ipPool.clear(index);
                 }
             } catch (Exception e) {
-                System.err.println("Failed to release IP for VLAN " + vlanId + ": " + ip + " - " + e.getMessage());
+                logger.error("Failed to release IP for VLAN {}: {} - {}", vlanId, ip, e.getMessage());
             }
         }
 

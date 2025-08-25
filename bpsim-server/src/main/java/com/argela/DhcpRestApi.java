@@ -11,8 +11,13 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Path("/dhcp")
 public class DhcpRestApi {
+    private static final Logger logger = LoggerFactory.getLogger(DhcpRestApi.class);
+
     @ConfigProperty(name = "uniPort")
     int uniPort;
 
@@ -76,7 +81,7 @@ public class DhcpRestApi {
                     .build();
         }
 
-        System.out.printf("Received DHCP Request: packetType=%s, ponPort=%d, onuId=%d, uniId=%d, gemPort=%d, cTag=%d%n",
+        logger.info("Received DHCP Request: packetType={}, ponPort={}, onuId={}, uniId={}, gemPort={}, cTag={}",
                 request.getPacketType(), request.getPonPort(), request.getOnuId(), request.getUniId(),
                 request.getGemPort(), request.getCTag());
 
@@ -149,8 +154,7 @@ public class DhcpRestApi {
             return Response.ok(filteredDevices).build();
 
         } catch (Exception e) {
-            System.err.println("Error retrieving DHCP sessions: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error retrieving DHCP sessions: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to retrieve DHCP sessions\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();
@@ -211,7 +215,7 @@ public class DhcpRestApi {
                     .entity("{\"error\": \"" + e.getMessage() + "\"}")
                     .build();
         } catch (Exception e) {
-            System.err.println("Error starting DHCP storm: " + e.getMessage());
+            logger.error("Error starting DHCP storm: {}", e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to start DHCP storm\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();
@@ -232,15 +236,15 @@ public class DhcpRestApi {
             // Clear all devices (IPs and MACs will be automatically released)
             deviceService.clearAll();
 
-            System.out.println("All devices cleared. Total cleared: " + deviceCount);
+            logger.info("All devices cleared. Total cleared: {}", deviceCount);
 
             return Response.ok()
                     .entity("{\"status\": \"success\", \"message\": \"All devices cleared\", \"clearedCount\": " + deviceCount + "}")
                     .build();
 
         } catch (Exception e) {
-            System.err.println("Error clearing all devices: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error clearing all devices: {}", e.getMessage(), e);
+
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to clear devices\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();
@@ -269,8 +273,8 @@ public class DhcpRestApi {
                     .build();
 
         } catch (Exception e) {
-            System.err.println("Error cancelling storm: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error cancelling storm: {}", e.getMessage(), e);
+
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\": \"Failed to cancel storm\", \"message\": \"" + e.getMessage() + "\"}")
                     .build();

@@ -9,13 +9,16 @@ import jakarta.json.bind.JsonbBuilder;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * WebSocket endpoint for real-time device updates and storm status notifications
  */
 @ServerEndpoint("/ws/devices")
 @ApplicationScoped
 public class DeviceWebSocket {
-
+    private static final Logger logger = LoggerFactory.getLogger(DeviceWebSocket.class);
     private static final Set<Session> sessions = ConcurrentHashMap.newKeySet();
     private static final Jsonb jsonb = JsonbBuilder.create();
 
@@ -33,6 +36,7 @@ public class DeviceWebSocket {
         for (DeviceInfo device : deviceService.getAllDevices()) {
             session.getAsyncRemote().sendText(jsonb.toJson(device));
         }
+        logger.debug("WebSocket client connected. Sending {} existing devices", deviceService.getAllDevices().size());
 
         StormStatusMessage stormMessage = new StormStatusMessage("ready", null, null);
         session.getAsyncRemote().sendText(jsonb.toJson(stormMessage));
@@ -45,11 +49,13 @@ public class DeviceWebSocket {
     @OnClose
     public void onClose(Session session) {
         sessions.remove(session);
+        logger.debug("WebSocket client disconnected");
     }
 
     @OnError
     public void onError(Session session, Throwable throwable) {
         sessions.remove(session);
+        logger.error("WebSocket error for session: {}", throwable.getMessage(), throwable);
     }
 
     /**
