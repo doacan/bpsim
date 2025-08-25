@@ -16,6 +16,7 @@
         <quarkus.platform.version>3.20.2</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.3</surefire-plugin.version>
+        <logback.version>1.5.13</logback.version>
     </properties>
 
     <dependencyManagement>
@@ -64,10 +65,28 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-validator</artifactId>
         </dependency>
-
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-undertow</artifactId>
+        </dependency>
+
+        <!-- Quarkus Logback Extension -->
+        <dependency>
+            <groupId>io.quarkiverse.logging.logback</groupId>
+            <artifactId>quarkus-logging-logback</artifactId>
+            <version>1.1.2</version>
+        </dependency>
+
+        <!-- Force compatible logback versions -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <version>${logback.version}</version>
         </dependency>
 
         <dependency>
@@ -75,8 +94,6 @@
             <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
-
-
 
         <dependency>
             <groupId>com.argela</groupId>

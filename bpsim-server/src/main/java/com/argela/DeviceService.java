@@ -3,6 +3,8 @@ package com.argela;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.*;
@@ -11,6 +13,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @ApplicationScoped
 public class DeviceService {
+    private static final Logger logger = LoggerFactory.getLogger(DeviceService.class);
+
     @ConfigProperty(name = "dhcp.device.max.count", defaultValue = "10000")
     int maxDevices;
 
@@ -31,8 +35,12 @@ public class DeviceService {
      * @throws RuntimeException if maximum device limit is reached or MAC/XID already exists
      */
     public void addDevice(DeviceInfo device) {
+        logger.debug("Adding device to system: vlanId={}, ponPort={}, onuId={}, state={}",
+                device.getVlanId(), device.getPonPort(), device.getOnuId(), device.getState());
+
         // Check device limit
         if (devices.size() >= maxDevices) {
+            logger.error("Maximum device limit reached: {}", maxDevices);
             throw new RuntimeException("Maximum device limit reached: " + maxDevices);
         }
 
@@ -40,10 +48,12 @@ public class DeviceService {
         if (device.getClientMac() == null || device.getClientMac().isEmpty()) {
             String newMac = generateUniqueMac();
             device.setClientMac(newMac);
+            logger.debug("Generated unique MAC address: {}", newMac);
         }
 
         // Ensure MAC is unique
         if (!macAddresses.add(device.getClientMac())) {
+            logger.error("MAC address already exists: {}", device.getClientMac());
             throw new RuntimeException("MAC address already exists: " + device.getClientMac());
         }
 
@@ -51,11 +61,13 @@ public class DeviceService {
         if (device.getXid() == 0) {
             int newXid = generateUniqueXID();
             device.setXid(newXid);
+            logger.debug("Generated unique XID: {}", newXid);
         }
 
         // Ensure XID is unique
         if (!xids.add(device.getXid())) {
             macAddresses.remove(device.getClientMac()); // Rollback
+            logger.error("XID already exists: {}", device.getXid());
             throw new RuntimeException("XID already exists: " + device.getXid());
         }
 
@@ -66,6 +78,9 @@ public class DeviceService {
         devices.put(newId, device);
         devicesByXid.put(device.getXid(), device);
 
+        logger.info("Device added successfully: ID={}, MAC={}, XID={}, VLAN={}, IP={}",
+                newId, device.getClientMac(), device.getXid(), device.getVlanId(), device.getIpAddress());
+
         DeviceWebSocket.broadcastDevice(device);
     }
 
@@ -74,18 +89,28 @@ public class DeviceService {
      * @param device The device information to update
      */
     public void updateDevice(DeviceInfo device) {
+        logger.debug("Updating device: ID={}, state={}, IP={}",
+                device.getId(), device.getState(), device.getIpAddress());
+
         DeviceInfo existingDevice = devices.get(device.getId());
         if (existingDevice != null) {
             // Release old IP (with VLAN)
             if (existingDevice.getIpAddress() != null &&
                     !existingDevice.getIpAddress().equals(device.getIpAddress())) {
+                logger.debug("Releasing old IP address: {} for VLAN: {}",
+                        existingDevice.getIpAddress(), existingDevice.getVlanId());
                 vlanIPPoolManager.releaseIP(existingDevice.getIpAddress(), existingDevice.getVlanId());
             }
 
             devices.put(device.getId(), device);
             devicesByXid.put(device.getXid(), device);
 
+            logger.info("Device updated successfully: ID={}, state={}, IP={}, duration={}ms",
+                    device.getId(), device.getState(), device.getIpAddress(), device.getDhcpDurationMs());
+
             DeviceWebSocket.broadcastDevice(device);
+        } else {
+            logger.warn("Attempted to update non-existent device: ID={}", device.getId());
         }
     }
 
@@ -94,6 +119,8 @@ public class DeviceService {
      * @param id The device ID to remove
      */
     public void removeDevice(int id) {
+        logger.debug("Removing device: ID={}", id);
+
         DeviceInfo device = devices.remove(id);
         if (device != null) {
             macAddresses.remove(device.getClientMac());
@@ -102,10 +129,15 @@ public class DeviceService {
 
             // Return IP to VLAN pool
             if (device.getIpAddress() != null) {
+                logger.debug("Releasing IP address: {} for VLAN: {}",
+                        device.getIpAddress(), device.getVlanId());
                 vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
             }
 
-            System.out.println("Device removed: ID=" + id + ", VLAN=" + device.getVlanId());
+            logger.info("Device removed successfully: ID={}, MAC={}, VLAN={}, IP={}",
+                    id, device.getClientMac(), device.getVlanId(), device.getIpAddress());
+        } else {
+            logger.warn("Attempted to remove non-existent device: ID={}", id);
         }
     }
 
@@ -115,7 +147,10 @@ public class DeviceService {
      * @return Unique IP address string
      */
     public String generateUniqueIPAddress(int vlanId) {
-        return vlanIPPoolManager.allocateIP(vlanId);
+        logger.debug("Generating unique IP address for VLAN: {}", vlanId);
+        String ip = vlanIPPoolManager.allocateIP(vlanId);
+        logger.debug("Allocated IP address: {} for VLAN: {}", ip, vlanId);
+        return ip;
     }
 
     /**
@@ -124,6 +159,7 @@ public class DeviceService {
      * @return Network configuration object containing gateway, DNS, subnet mask etc.
      */
     public NetworkConfiguration getNetworkConfiguration(int vlanId) {
+        logger.debug("Getting network configuration for VLAN: {}", vlanId);
         return new NetworkConfiguration(
                 vlanIPPoolManager.getGatewayIP(vlanId),
                 vlanIPPoolManager.getDNSServerIP(vlanId) + "," + vlanIPPoolManager.getSecondaryDNSServerIP(vlanId),
@@ -140,7 +176,14 @@ public class DeviceService {
      * @return Optional containing the device if found
      */
     public Optional<DeviceInfo> findDeviceByXid(int xid) {
-        return Optional.ofNullable(devicesByXid.get(xid));
+        logger.debug("Finding device by XID: {}", xid);
+        Optional<DeviceInfo> device = Optional.ofNullable(devicesByXid.get(xid));
+        if (device.isPresent()) {
+            logger.debug("Found device by XID: {} -> ID={}", xid, device.get().getId());
+        } else {
+            logger.debug("No device found for XID: {}", xid);
+        }
+        return device;
     }
 
     /**
@@ -149,7 +192,14 @@ public class DeviceService {
      * @return Optional containing the device if found
      */
     public Optional<DeviceInfo> findDeviceById(int id) {
-        return Optional.ofNullable(devices.get(id));
+        logger.debug("Finding device by ID: {}", id);
+        Optional<DeviceInfo> device = Optional.ofNullable(devices.get(id));
+        if (device.isPresent()) {
+            logger.debug("Found device by ID: {} -> MAC={}, state={}", id, device.get().getClientMac(), device.get().getState());
+        } else {
+            logger.debug("No device found for ID: {}", id);
+        }
+        return device;
     }
 
     /**
@@ -158,9 +208,16 @@ public class DeviceService {
      * @return Optional containing the device if found
      */
     public Optional<DeviceInfo> findDeviceByMac(String mac) {
-        return devices.values().stream()
-                .filter(device -> mac.equals(device.getClientMac()))
+        logger.debug("Finding device by MAC: {}", mac);
+        Optional<DeviceInfo> device = devices.values().stream()
+                .filter(d -> mac.equals(d.getClientMac()))
                 .findFirst();
+        if (device.isPresent()) {
+            logger.debug("Found device by MAC: {} -> ID={}", mac, device.get().getId());
+        } else {
+            logger.debug("No device found for MAC: {}", mac);
+        }
+        return device;
     }
 
     /**
@@ -170,6 +227,7 @@ public class DeviceService {
      * @return true if IP is in use, false otherwise
      */
     public boolean isIPAddressInUse(String ipAddress, int vlanId) {
+        logger.debug("Checking IP address usage: {} in VLAN: {}", ipAddress, vlanId);
         return vlanIPPoolManager.isIPInUse(ipAddress, vlanId);
     }
 
@@ -178,6 +236,7 @@ public class DeviceService {
      * @return Collection of all device information
      */
     public Collection<DeviceInfo> getAllDevices() {
+        logger.debug("Getting all devices, total count: {}", devices.size());
         return devices.values();
     }
 
@@ -187,6 +246,7 @@ public class DeviceService {
      * @return Device information or null if not found
      */
     public DeviceInfo getDevice(int id) {
+        logger.debug("Getting device by ID: {}", id);
         return devices.get(id);
     }
 
@@ -196,6 +256,7 @@ public class DeviceService {
      * @return true if MAC is in use, false otherwise
      */
     public boolean isMacAddressInUse(String macAddress) {
+        logger.debug("Checking MAC address usage: {}", macAddress);
         return macAddresses.contains(macAddress);
     }
 
@@ -205,9 +266,12 @@ public class DeviceService {
      * @return List of devices with the specified state
      */
     public List<DeviceInfo> getDevicesByState(String state) {
-        return devices.values().stream()
+        logger.debug("Getting devices by state: {}", state);
+        List<DeviceInfo> deviceList = devices.values().stream()
                 .filter(device -> state.equals(device.getState()))
                 .toList();
+        logger.debug("Found {} devices in state: {}", deviceList.size(), state);
+        return deviceList;
     }
 
     /**
@@ -216,15 +280,19 @@ public class DeviceService {
      * @return List of devices in the specified VLAN
      */
     public List<DeviceInfo> getDevicesByVlan(int vlanId) {
-        return devices.values().stream()
+        logger.debug("Getting devices by VLAN: {}", vlanId);
+        List<DeviceInfo> deviceList = devices.values().stream()
                 .filter(device -> device.getVlanId() == vlanId)
                 .toList();
+        logger.debug("Found {} devices in VLAN: {}", deviceList.size(), vlanId);
+        return deviceList;
     }
 
     /**
      * Removes devices with expired DHCP leases
      */
     public void cleanExpiredLeases() {
+        logger.debug("Cleaning expired leases");
         Instant now = Instant.now();
         List<DeviceInfo> expiredDevices = devices.values().stream()
                 .filter(device -> device.getLeaseStartTime() != null &&
@@ -232,8 +300,11 @@ public class DeviceService {
                         now.isAfter(device.getLeaseStartTime().plusSeconds(device.getLeaseTime())))
                 .toList();
 
+        logger.info("Found {} expired devices to clean", expiredDevices.size());
+
         for (DeviceInfo device : expiredDevices) {
-            System.out.println("Removing expired lease for device ID: " + device.getId() + ", VLAN: " + device.getVlanId());
+            logger.info("Removing expired lease for device ID: {}, VLAN: {}, IP: {}",
+                    device.getId(), device.getVlanId(), device.getIpAddress());
             removeDevice(device.getId());
         }
     }
@@ -243,6 +314,7 @@ public class DeviceService {
      * @return Map containing various system statistics
      */
     public Map<String, Object> getStatistics() {
+        logger.debug("Generating system statistics");
         Map<String, Object> stats = new HashMap<>();
 
         // Count devices by state
@@ -264,6 +336,9 @@ public class DeviceService {
         stats.put("nextDeviceId", deviceIdCounter.get());
         stats.put("vlanPoolStatistics", vlanIPPoolManager.getAllStatistics());
 
+        logger.debug("Generated statistics for {} devices across {} VLANs",
+                devices.size(), vlanDeviceCount.size());
+
         return stats;
     }
 
@@ -271,9 +346,13 @@ public class DeviceService {
      * Clears all devices and resets the system
      */
     public void clearAll() {
+        logger.info("Clearing all devices and resetting system");
+        int deviceCount = devices.size();
+
         // Release all IPs
         devices.values().forEach(device -> {
             if (device.getIpAddress() != null) {
+                logger.debug("Releasing IP: {} for VLAN: {}", device.getIpAddress(), device.getVlanId());
                 vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
             }
         });
@@ -284,6 +363,8 @@ public class DeviceService {
         xids.clear();
         deviceIdCounter.set(0);
         vlanIPPoolManager.clearAll();
+
+        logger.info("System cleared successfully. {} devices removed", deviceCount);
     }
 
     /**
@@ -300,6 +381,7 @@ public class DeviceService {
                 newXid = 1;
             }
         } while (xids.contains(newXid));
+        logger.debug("Generated unique XID: {}", newXid);
         return newXid;
     }
 
@@ -322,6 +404,7 @@ public class DeviceService {
                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         } while (macAddresses.contains(newMac));
 
+        logger.debug("Generated unique MAC address: {}", newMac);
         return newMac;
     }
 
