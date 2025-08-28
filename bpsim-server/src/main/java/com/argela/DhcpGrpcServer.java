@@ -558,7 +558,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                     options.add(opt50);
                 }
                 // Option 54: Server Identifier
-                if (serverIP != null) {
+                if (!serverIP.equals("0.0.0.0")) {
                     byte[] serverBytes = IPv4.toIPv4AddressBytes(serverIP);
                     DhcpOption opt54 = new DhcpOption()
                             .setCode((byte) 54)
@@ -703,7 +703,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @return DeviceInfo object configured for discovery state
      */
     private DeviceInfo createDeviceForDiscovery(DhcpSimulationRequest request) {
-        return new DeviceInfo(
+        DeviceInfo device = new DeviceInfo(
                 0,                           // id (will be auto-assigned by DeviceService)
                 null,                           // clientMac (DeviceService will auto-assign)
                 null,                           // ipAddress (not yet available)
@@ -722,6 +722,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 request.getOnuId(),             // onuId
                 java.time.Instant.now()         // leaseStartTime
         );
+
+        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+            device.setClientMac(request.getClientMac().trim());
+        }
+
+        return device;
     }
 
     /**
@@ -733,7 +739,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         // Get network configuration
         DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
 
-        return new DeviceInfo(
+        DeviceInfo device = new DeviceInfo(
                 0,                           // id (will be auto-assigned by DeviceService)
                 null,                           // clientMac
                 deviceService.generateUniqueIPAddress(request.getCTag()), // ipAddress (based on VLAN)
@@ -752,6 +758,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 request.getOnuId(),             // onuId
                 java.time.Instant.now()         // leaseStartTime
         );
+
+        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+            device.setClientMac(request.getClientMac().trim());
+        }
+
+        return device;
     }
 
     /**
@@ -764,7 +776,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
         String offeredIP = deviceService.generateUniqueIPAddress(request.getCTag());
 
-        return new DeviceInfo(
+        DeviceInfo device = new DeviceInfo(
                 0,                           // id (will be auto-assigned by DeviceService)
                 null,                           // clientMac
                 offeredIP,                      // ipAddress (IP received in offer - based on VLAN)
@@ -783,6 +795,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 request.getOnuId(),             // onuId
                 java.time.Instant.now()         // leaseStartTime
         );
+
+        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+            device.setClientMac(request.getClientMac().trim());
+        }
+
+        return device;
     }
 
     /**
@@ -795,7 +813,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(request.getCTag());
         String requestedIP = deviceService.generateUniqueIPAddress(request.getCTag());
 
-        return new DeviceInfo(
+        DeviceInfo device = new DeviceInfo(
                 0,                           // id (will be auto-assigned by DeviceService)
                 null,                           // clientMac
                 requestedIP,                    // ipAddress (IP to be acknowledged - based on VLAN)
@@ -814,6 +832,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 request.getOnuId(),             // onuId
                 java.time.Instant.now()         // leaseStartTime
         );
+
+        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+            device.setClientMac(request.getClientMac().trim());
+        }
+
+        return device;
     }
 
     /**
@@ -1095,7 +1119,7 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                             // Create DhcpSimulationRequest object
                             DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
-                                    "discovery", currentPonPort, currentOnuPort, uniId, gemPort, cTag
+                                    "discovery", currentPonPort, currentOnuPort, uniId, gemPort, cTag, null
                             );
 
                             // Create discovery device and send

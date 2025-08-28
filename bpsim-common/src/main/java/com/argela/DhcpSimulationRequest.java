@@ -22,22 +22,25 @@ public class DhcpSimulationRequest implements Serializable {
     @JsonProperty("cTag")
     private int cTag;
 
+    @JsonProperty("clientMac")
+    private String clientMac;
+
     public DhcpSimulationRequest() {
     }
 
-    public DhcpSimulationRequest(String packetType, int ponPort, int onuId, int uniId, int gemPort, int cTag) {
+    public DhcpSimulationRequest(String packetType, int ponPort, int onuId, int uniId, int gemPort, int cTag, String clientMac) {
         this.packetType = packetType;
         this.ponPort = ponPort;
         this.onuId = onuId;
         this.uniId = uniId;
         this.gemPort = gemPort;
         this.cTag = cTag;
+        this.clientMac = clientMac;
     }
 
     public String getPacketType() {
         return packetType;
     }
-
     public void setPacketType(String packetType) {
         this.packetType = packetType;
     }
@@ -45,7 +48,6 @@ public class DhcpSimulationRequest implements Serializable {
     public int getPonPort() {
         return ponPort;
     }
-
     public void setPonPort(int ponPort) {
         this.ponPort = ponPort;
     }
@@ -53,7 +55,6 @@ public class DhcpSimulationRequest implements Serializable {
     public int getOnuId() {
         return onuId;
     }
-
     public void setOnuId(int onuId) {
         this.onuId = onuId;
     }
@@ -61,7 +62,6 @@ public class DhcpSimulationRequest implements Serializable {
     public int getUniId() {
         return uniId;
     }
-
     public void setUniId(int uniId) {
         this.uniId = uniId;
     }
@@ -69,7 +69,6 @@ public class DhcpSimulationRequest implements Serializable {
     public int getGemPort() {
         return gemPort;
     }
-
     public void setGemPort(int gemPort) {
         this.gemPort = gemPort;
     }
@@ -77,9 +76,15 @@ public class DhcpSimulationRequest implements Serializable {
     public int getCTag() {
         return cTag;
     }
-
     public void setCTag(int cTag) {
         this.cTag = cTag;
+    }
+
+    public String getClientMac() {
+        return clientMac;
+    }
+    public void setClientMac(String clientMac) {
+        this.clientMac = clientMac;
     }
 
     @Override
@@ -91,6 +96,7 @@ public class DhcpSimulationRequest implements Serializable {
                 ", uniId=" + uniId +
                 ", gemPort=" + gemPort +
                 ", cTag=" + cTag +
+                ", clientMac='" + clientMac + '\'' +
                 '}';
     }
 }

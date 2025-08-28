@@ -2,6 +2,7 @@ package com.argela;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_LongestLine;
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Command(name = "bpsimctl",
         description = "BPSIM Control CLI Tool",
@@ -142,7 +144,6 @@ class BpsimctlCommand implements Runnable {
 
             } catch (Exception e) {
                 System.err.println("Error getting DHCP list: " + e.getMessage());
-                e.printStackTrace();
             }
         }
 
@@ -409,8 +410,7 @@ class BpsimctlCommand implements Runnable {
                 return;
             }
 
-            try {
-                HttpClient client = HttpClient.newHttpClient();
+            try(HttpClient client = HttpClient.newHttpClient()){
                 ObjectMapper objectMapper = new ObjectMapper();
                 objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
                 objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
@@ -429,13 +429,11 @@ class BpsimctlCommand implements Runnable {
                         HttpResponse.BodyHandlers.ofString());
 
                 System.out.println("DHCP Storm request sent:");
-                System.out.println(jsonPayload);
                 System.out.println("Response status: " + response.statusCode());
                 System.out.println("Response body: " + response.body());
 
             } catch (Exception e) {
                 System.err.println("Error sending DHCP Storm request: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -476,9 +474,12 @@ class BpsimctlCommand implements Runnable {
             @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
             String serverUrl = "http://localhost:8080";
 
+            @Option(names = {"-m", "--mac"}, description = "Client MAC address (format: xx:xx:xx:xx:xx:xx)")
+            String clientMac;
+
             protected void sendDhcpRequest(String packetType) {
                 DhcpSimulationRequest request = new DhcpSimulationRequest(
-                        packetType, ponPort, onuId, uniId, gemPort, cTag
+                        packetType, ponPort, onuId, uniId, gemPort, cTag, clientMac
                 );
 
                 try (HttpClient client = HttpClient.newHttpClient()) {
@@ -498,13 +499,76 @@ class BpsimctlCommand implements Runnable {
                             HttpResponse.BodyHandlers.ofString());
 
                     System.out.println("DHCP " + packetType + " request sent:");
-                    System.out.println(jsonPayload);
                     System.out.println("Response status: " + response.statusCode());
-                    System.out.println("Response body: " + response.body());
 
+                    if (response.statusCode() == 200) {
+                        System.out.println("DHCP " + packetType + " request sent successfully");
+                    } else {
+                        // Parse error message from response body
+                        String errorMsg = parseErrorMessage(response.body());
+                        System.err.println("Error: " + errorMsg);
+                    }
                 } catch (Exception e) {
                     System.err.println("Error sending DHCP " + packetType + " request: " + e.getMessage());
-                    e.printStackTrace();
+                }
+            }
+
+            private String parseErrorMessage(String responseBody) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> errorResponse = mapper.readValue(responseBody, new TypeReference<>() { });
+
+                    String details = (String) errorResponse.get("details");
+                    if (details != null) {
+                        if (details.contains("MAC address already exists:")) {
+                            String mac = extractMacFromError(details, "MAC address already exists:");
+                            return "MAC address already exists: " + mac;
+                        }
+
+                        if (details.contains("Invalid MAC address format:")) {
+                            String mac = extractMacFromError(details, "Invalid MAC address format:");
+                            return "Invalid MAC address format: " + mac + ". Expected format: xx:xx:xx:xx:xx:xx";
+                        }
+
+                        if (details.contains("RuntimeException:")) {
+                            String msg = details.substring(details.indexOf("RuntimeException:") + 17);
+                            if (msg.contains("\n")) {
+                                msg = msg.substring(0, msg.indexOf("\n"));
+                            }
+                            return msg.trim();
+                        }
+                    }
+
+                    String error = (String) errorResponse.get("error");
+                    return Objects.requireNonNullElse(error, "Unknown error occurred");
+                } catch (Exception e) {
+                    return responseBody;
+                }
+            }
+
+            private String extractMacFromError(String errorDetails, String prefix) {
+                try {
+                    int startIndex = errorDetails.indexOf(prefix);
+                    if (startIndex == -1) return "unknown";
+
+                    startIndex += prefix.length();
+                    String remaining = errorDetails.substring(startIndex).trim();
+
+                    java.util.regex.Pattern macPattern = java.util.regex.Pattern.compile("([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}");
+                    java.util.regex.Matcher matcher = macPattern.matcher(remaining);
+
+                    if (matcher.find()) {
+                        return matcher.group(0);
+                    }
+
+                    String[] parts = remaining.split("\\s+");
+                    if (parts.length > 0) {
+                        return parts[0];
+                    }
+
+                    return "unknown";
+                } catch (Exception e) {
+                    return "unknown";
                 }
             }
         }
@@ -577,7 +641,7 @@ class BpsimctlCommand implements Runnable {
 
                 // JSON parse
                 ObjectMapper mapper = new ObjectMapper();
-                Map<String, Object> info = mapper.readValue(response.body(), Map.class);
+                Map<String, Object> info = mapper.readValue(response.body(), new TypeReference<>() { });
 
                 // Display information
                 System.out.println("BPSIM System Configuration:");
@@ -588,7 +652,6 @@ class BpsimctlCommand implements Runnable {
 
             } catch (Exception e) {
                 System.err.println("Error getting system info: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -616,14 +679,15 @@ class BpsimctlCommand implements Runnable {
                 if (response.statusCode() == 200) {
                     // JSON parse
                     ObjectMapper mapper = new ObjectMapper();
-                    Map<String, Object> result = mapper.readValue(response.body(), Map.class);
+                    Map<String, Object> result = mapper.readValue(response.body(), new TypeReference<>() { });
 
-                    System.out.println("✓ " + result.get("status"));
+                    System.out.println(result.get("status"));
                 } else {
                     System.err.println("Error: HTTP " + response.statusCode());
                     try {
                         ObjectMapper mapper = new ObjectMapper();
-                        Map<String, Object> errorResult = mapper.readValue(response.body(), Map.class);
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), new TypeReference<>() { });
+
                         System.err.println("Message: " + errorResult.get("error"));
                     } catch (Exception e) {
                         System.err.println("Response: " + response.body());
@@ -632,7 +696,6 @@ class BpsimctlCommand implements Runnable {
 
             } catch (Exception e) {
                 System.err.println("Error stopping storm: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -659,8 +722,9 @@ class BpsimctlCommand implements Runnable {
 
                 if (response.statusCode() == 200) {
                     ObjectMapper mapper = new ObjectMapper();
-                    Map<String, Object> result = mapper.readValue(response.body(), Map.class);
-                    System.out.println("✓ " + result.get("message"));
+                    Map<String, Object> result = mapper.readValue(response.body(), new TypeReference<>() { });
+
+                    System.out.println(result.get("message"));
                     Object clearedCount = result.get("clearedCount");
                     if (clearedCount != null) {
                         System.out.println("Devices cleared: " + clearedCount);
@@ -669,7 +733,8 @@ class BpsimctlCommand implements Runnable {
                     System.err.println("Error: HTTP " + response.statusCode());
                     try {
                         ObjectMapper mapper = new ObjectMapper();
-                        Map<String, Object> errorResult = mapper.readValue(response.body(), Map.class);
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), new TypeReference<>() { });
+
                         System.err.println("Message: " + errorResult.get("error"));
                     } catch (Exception e) {
                         System.err.println("Response: " + response.body());

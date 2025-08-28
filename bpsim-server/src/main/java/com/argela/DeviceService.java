@@ -49,6 +49,12 @@ public class DeviceService {
             String newMac = generateUniqueMac();
             device.setClientMac(newMac);
             logger.debug("Generated unique MAC address: {}", newMac);
+        } else {
+            // Validate provided MAC format
+            if (!isValidMacFormat(device.getClientMac())) {
+                throw new RuntimeException("Invalid MAC address format: " + device.getClientMac() +
+                        ". Expected format: xx:xx:xx:xx:xx:xx");
+            }
         }
 
         // Ensure MAC is unique
@@ -447,5 +453,10 @@ public class DeviceService {
         public String getSubnetMask() { return subnetMask; }
         public String getNetworkIP() { return networkIP; }
         public String getBroadcastIP() { return broadcastIP; }
+    }
+
+    private boolean isValidMacFormat(String mac) {
+        if (mac == null) return false;
+        return mac.matches("^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$");
     }
 }
