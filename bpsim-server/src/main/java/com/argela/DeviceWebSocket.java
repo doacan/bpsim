@@ -143,4 +143,27 @@ public class DeviceWebSocket {
             session.getAsyncRemote().sendText(json);
         }
     }
+
+    /**
+     * Broadcasts clear all message to connected clients
+     */
+    public static void broadcastClearAll() {
+        ClearAllMessage clearMessage = new ClearAllMessage();
+        String json = jsonb.toJson(clearMessage);
+
+        for (Session session : sessions) {
+            session.getAsyncRemote().sendText(json);
+        }
+    }
+
+    /**
+     * Message class for clear all notifications
+     */
+    public static class ClearAllMessage {
+        private String type = "clear_all";
+        private String action = "clear";
+
+        public String getType() { return type; }
+        public String getAction() { return action; }
+    }
 }

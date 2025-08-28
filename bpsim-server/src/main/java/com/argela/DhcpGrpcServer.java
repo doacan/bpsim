@@ -217,14 +217,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @param request The ONU packet from VOLTHA containing DHCP messages
      */
     private void processOnuPacket(VolthaOpenOLT.OnuPacket request) {
-        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
 
-         */
         byte[] packetData = request.getPkt().toByteArray();
         try {
             Ethernet ethFrame = Ethernet.deserializer().deserialize(packetData, 0, packetData.length);
@@ -272,14 +270,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @param request The uplink packet from VOLTHA containing DHCP messages
      */
     private void processUplinkPacket(VolthaOpenOLT.UplinkPacket request) {
-        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
 
-         */
         byte[] packetData = request.getPkt().toByteArray();
         try {
             Ethernet ethFrame = Ethernet.deserializer().deserialize(packetData, 0, packetData.length);
@@ -1117,7 +1113,6 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                             // Apply delay if not the last device
                             if (deviceIndex < totalDevices) {
-                                // ÖNEMLİ: InterruptedException yakalayarak cancel durumunu handle et
                                 try {
                                     Thread.sleep(delayMs);
                                 } catch (InterruptedException e) {
@@ -1150,7 +1145,6 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 );
             } catch (Exception e) {
                 logger.error("Fatal error during DHCP storm: {}", e.getMessage(), e);
-                e.printStackTrace();
                 DeviceWebSocket.broadcastStormStatus(
                         "error",
                         null,
@@ -1212,10 +1206,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
             if (stormInProgress && currentStormFuture != null) {
                 logger.info("Cancelling DHCP storm...");
 
-                // Önce flag'i false yap
                 stormInProgress = false;
 
-                // Sonra future'ı cancel et
                 boolean cancelled = currentStormFuture.cancel(true); // interrupt if running
 
                 logger.info("DHCP storm cancellation result: {}", cancelled);

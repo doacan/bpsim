@@ -364,6 +364,8 @@ public class DeviceService {
         deviceIdCounter.set(0);
         vlanIPPoolManager.clearAll();
 
+        DeviceWebSocket.broadcastClearAll();
+
         logger.info("System cleared successfully. {} devices removed", deviceCount);
     }
 

@@ -206,6 +206,12 @@
     ws.onmessage = event => {
         const data = JSON.parse(event.data);
 
+        // Check if it's a clear all message
+        if (data.type === 'clear_all') {
+            handleClearAll();
+            return;
+        }
+
         // Check if it's a storm status message
         if (data.type === 'storm_status') {
             handleStormStatusUpdate(data);
@@ -267,6 +273,15 @@
         }
     }
 
+    ws.onopen = () => {
+        console.log("WebSocket connection opened");
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        showNotification("WebSocket connection error", "error");
+    };
+
     function updateStormButton(status, params) {
         stormBtn.className = 'storm-button';
 
@@ -294,14 +309,13 @@
         }
     }
 
-    ws.onopen = () => {
-        console.log("WebSocket connection opened");
-    };
-
-    ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        showNotification("WebSocket connection error", "error");
-    };
+    function handleClearAll() {
+        // Clear the UI immediately
+        deviceGrid.innerHTML = '';
+        deviceCount = 0;
+        updateStats();
+        showNotification("All devices cleared", "success");
+    }
 
     function updateStats() {
         statsInfo.textContent = `Total Devices: ${deviceCount}`;

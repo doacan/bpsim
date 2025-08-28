@@ -3,7 +3,6 @@ package com.argela;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import picocli.CommandLine;
@@ -27,16 +26,15 @@ import java.util.Map;
                 BpsimctlCommand.DhcpCommand.class,
                 BpsimctlCommand.DhcpListCommand.class,
                 BpsimctlCommand.DhcpStormCommand.class,
-                BpsimctlCommand.InfoCommand.class
+                BpsimctlCommand.InfoCommand.class,
+                BpsimctlCommand.StopCommand.class,
+                BpsimctlCommand.ClearCommand.class
         })
 class BpsimctlCommand implements Runnable {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new BpsimctlCommand()).execute(args);
         System.exit(exitCode);
     }
-
-    @ConfigProperty(name = "bpsim.server.port", defaultValue = "8080")
-    String serverPort;
 
     @Override
     public void run() {
@@ -399,8 +397,12 @@ class BpsimctlCommand implements Runnable {
         @Override
         public void run() {
             // Validate that exactly one of rate or intervalSec is provided
-            if ((rate == null && intervalSec == null) || (rate != null && intervalSec != null)) {
-                System.err.println("Error: You must specify exactly one of: rate OR intervalSec");
+            if (rate != null && rate == 0 && intervalSec != null && intervalSec > 0) {
+                rate = null;
+            } else if (rate != null && rate > 0) {
+                intervalSec = null;
+            } else {
+                System.err.println("Error: Invalid parameters");
                 System.err.println("Usage: storm <rate> [intervalSec]");
                 System.err.println("  - For rate-based: storm 100");
                 System.err.println("  - For interval-based: storm 0 5");
@@ -507,7 +509,9 @@ class BpsimctlCommand implements Runnable {
             }
         }
 
-        @Command(name = "discovery", description = "Send DHCP DISCOVERY packet")
+        @Command(name = "discovery",
+                mixinStandardHelpOptions = true,
+                description = "Send DHCP DISCOVERY packet")
         static class DhcpDiscoveryCommand extends DhcpPacketCommand {
             @Override
             public void run() {
@@ -515,7 +519,9 @@ class BpsimctlCommand implements Runnable {
             }
         }
 
-        @Command(name = "offer", description = "Send DHCP OFFER packet")
+        @Command(name = "offer",
+                mixinStandardHelpOptions = true,
+                description = "Send DHCP OFFER packet")
         static class DhcpOfferCommand extends DhcpPacketCommand {
             @Override
             public void run() {
@@ -523,7 +529,9 @@ class BpsimctlCommand implements Runnable {
             }
         }
 
-        @Command(name = "request", description = "Send DHCP REQUEST packet")
+        @Command(name = "request",
+                mixinStandardHelpOptions = true,
+                description = "Send DHCP REQUEST packet")
         static class DhcpRequestCommand extends DhcpPacketCommand {
             @Override
             public void run() {
@@ -531,7 +539,9 @@ class BpsimctlCommand implements Runnable {
             }
         }
 
-        @Command(name = "ack", description = "Send DHCP ACK packet")
+        @Command(name = "ack",
+                mixinStandardHelpOptions = true,
+                description = "Send DHCP ACK packet")
         static class DhcpAckCommand extends DhcpPacketCommand {
             @Override
             public void run() {
@@ -579,6 +589,94 @@ class BpsimctlCommand implements Runnable {
             } catch (Exception e) {
                 System.err.println("Error getting system info: " + e.getMessage());
                 e.printStackTrace();
+            }
+        }
+    }
+
+    @Command(name = "stop",
+            mixinStandardHelpOptions = true,
+            description = "Stop currently running DHCP storm")
+    static class StopCommand implements Runnable {
+
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        String serverUrl = "http://localhost:8080";
+
+        @Override
+        public void run() {
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(serverUrl + "/dhcp/storm/cancel"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+                HttpResponse<String> response = client.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    // JSON parse
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> result = mapper.readValue(response.body(), Map.class);
+
+                    System.out.println("✓ " + result.get("status"));
+                } else {
+                    System.err.println("Error: HTTP " + response.statusCode());
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), Map.class);
+                        System.err.println("Message: " + errorResult.get("error"));
+                    } catch (Exception e) {
+                        System.err.println("Response: " + response.body());
+                    }
+                }
+
+            } catch (Exception e) {
+                System.err.println("Error stopping storm: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @Command(name = "clear",
+            mixinStandardHelpOptions = true,
+            description = "Clear all DHCP devices from the system")
+    static class ClearCommand implements Runnable {
+
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        String serverUrl = "http://localhost:8080";
+
+        @Override
+        public void run() {
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(serverUrl + "/dhcp/clear-all"))
+                        .header("Content-Type", "application/json")
+                        .DELETE()
+                        .build();
+
+                HttpResponse<String> response = client.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> result = mapper.readValue(response.body(), Map.class);
+                    System.out.println("✓ " + result.get("message"));
+                    Object clearedCount = result.get("clearedCount");
+                    if (clearedCount != null) {
+                        System.out.println("Devices cleared: " + clearedCount);
+                    }
+                } else {
+                    System.err.println("Error: HTTP " + response.statusCode());
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), Map.class);
+                        System.err.println("Message: " + errorResult.get("error"));
+                    } catch (Exception e) {
+                        System.err.println("Response: " + response.body());
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error clearing devices: " + e.getMessage());
             }
         }
     }
