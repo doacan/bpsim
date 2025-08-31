@@ -1,5 +1,6 @@
 package com.argela;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -15,8 +16,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DeviceService {
     private static final Logger logger = LoggerFactory.getLogger(DeviceService.class);
 
-    @ConfigProperty(name = "dhcp.device.max.count", defaultValue = "10000")
-    int maxDevices;
+    @ConfigProperty(name = "dhcp.pon.port.start", defaultValue = "0")
+    int ponPortStart;
+
+    @ConfigProperty(name = "dhcp.pon.port.count", defaultValue = "16")
+    int ponPortCount;
+
+    @ConfigProperty(name = "dhcp.onu.port.start", defaultValue = "0")
+    int onuPortStart;
+
+    @ConfigProperty(name = "dhcp.onu.port.count", defaultValue = "128")
+    int onuPortCount;
+
+    @ConfigProperty(name = "dhcp.uni.port.start", defaultValue = "0")
+    int uniPortStart;
+
+    @ConfigProperty(name = "dhcp.uni.port.count", defaultValue = "1")
+    int uniPortCount;
 
     private final ConcurrentHashMap<Integer, DeviceInfo> devices = new ConcurrentHashMap<>();
     private final AtomicInteger deviceIdCounter = new AtomicInteger(0);
@@ -30,6 +46,111 @@ public class DeviceService {
     VlanIPPoolManager vlanIPPoolManager;
 
     /**
+     * Preloads devices at application startup in PON > ONU > UNI order
+     */
+    @PostConstruct
+    public void preloadDevices() {
+        logger.info("Starting device preloading - PON: {}-{}, ONU: {}-{}, UNI: {}-{}",
+                ponPortStart, ponPortStart + ponPortCount - 1,
+                onuPortStart, onuPortStart + onuPortCount - 1,
+                uniPortStart, uniPortStart + uniPortCount - 1);
+
+        try {
+            Random random = new Random();
+            int createdCount = 0;
+            int failureCount = 0;
+
+            for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
+                int currentPonPort = ponPortStart + ponIndex;
+
+                for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
+                    int currentOnuId = onuPortStart + onuIndex;
+
+                    for (int uniIndex = 0; uniIndex < uniPortCount; uniIndex++) {
+                        int currentUniId = uniPortStart + uniIndex;
+
+                        try {
+                            // Generate random network parameters
+                            int gemPort = 1024 + random.nextInt(2048); // 1024-3071
+                            int cTag = 100 + random.nextInt(3994); // 100-4093
+
+                            DeviceInfo device = new DeviceInfo(
+                                    0,                          // id (auto-assigned)
+                                    null,                       // clientMac (auto-assigned)
+                                    null,                       // ipAddress (not assigned yet)
+                                    null,                       // requiredIp (not assigned yet)
+                                    "IDLE",                     // state (waiting for DHCP request)
+                                    null,                       // dns (not assigned yet)
+                                    null,                       // gateway (not assigned yet)
+                                    null,                       // serverIdentifier (not assigned yet)
+                                    null,                       // subnetMask (not assigned yet)
+                                    0,                          // xid (auto-assigned)
+                                    0,                          // leaseTime (not assigned yet)
+                                    cTag,                       // vlanId
+                                    currentPonPort,             // ponPort
+                                    gemPort,                    // gemPort
+                                    currentUniId,               // uniId
+                                    currentOnuId,               // onuId
+                                    null                        // leaseStartTime (not started yet)
+                            );
+
+                            addDevice(device);
+                            createdCount++;
+
+                            // Log progress every 100 devices
+                            if (createdCount % 100 == 0) {
+                                logger.debug("Preloaded {} devices", createdCount);
+                            }
+
+                        } catch (Exception e) {
+                            failureCount++;
+                            logger.warn("Failed to preload device PON={}, ONU={}, UNI={}: {}",
+                                    currentPonPort, currentOnuId, currentUniId, e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            logger.info("Device preloading completed: {} devices created, {} failures",
+                    createdCount, failureCount);
+
+        } catch (Exception e) {
+            logger.error("Error during device preloading: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Finds an idle device that matches the given parameters
+     * @param ponPort PON port number
+     * @param onuId ONU ID
+     * @param uniId UNI ID
+     * @param gemPort GEM port number
+     * @param cTag VLAN tag
+     * @return Optional containing matching idle device
+     */
+    public Optional<DeviceInfo> findIdleDevice(int ponPort, int onuId, int uniId, int gemPort, int cTag) {
+        logger.debug("Finding idle device: PON={}, ONU={}, UNI={}, GEM={}, VLAN={}",
+                ponPort, onuId, uniId, gemPort, cTag);
+
+        Optional<DeviceInfo> device = devices.values().stream()
+                .filter(d -> "IDLE".equals(d.getState()))
+                .filter(d -> d.getPonPort() == ponPort)
+                .filter(d -> d.getOnuId() == onuId)
+                .filter(d -> d.getUniId() == uniId)
+                .filter(d -> d.getGemPort() == gemPort)
+                .filter(d -> d.getVlanId() == cTag)
+                .findFirst();
+
+        if (device.isPresent()) {
+            logger.debug("Found matching idle device: ID={}", device.get().getId());
+        } else {
+            logger.debug("No matching idle device found");
+        }
+
+        return device;
+    }
+
+    /**
      * Adds a new device to the system
      * @param device The device information to add
      * @throws RuntimeException if maximum device limit is reached or MAC/XID already exists
@@ -37,12 +158,6 @@ public class DeviceService {
     public void addDevice(DeviceInfo device) {
         logger.debug("Adding device to system: vlanId={}, ponPort={}, onuId={}, state={}",
                 device.getVlanId(), device.getPonPort(), device.getOnuId(), device.getState());
-
-        // Check device limit
-        if (devices.size() >= maxDevices) {
-            logger.error("Maximum device limit reached: {}", maxDevices);
-            throw new RuntimeException("Maximum device limit reached: " + maxDevices);
-        }
 
         // Generate MAC address if not present
         if (device.getClientMac() == null || device.getClientMac().isEmpty()) {

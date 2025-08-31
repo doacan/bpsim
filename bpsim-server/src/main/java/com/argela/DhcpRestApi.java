@@ -20,9 +20,6 @@ import org.slf4j.LoggerFactory;
 public class DhcpRestApi {
     private static final Logger logger = LoggerFactory.getLogger(DhcpRestApi.class);
 
-    @ConfigProperty(name = "uniPort")
-    int uniPort;
-
     @ConfigProperty(name = "dhcp.pon.port.start", defaultValue = "0")
     int ponPortStart;
 
@@ -34,6 +31,12 @@ public class DhcpRestApi {
 
     @ConfigProperty(name = "dhcp.onu.port.count", defaultValue = "128")
     int onuPortCount;
+
+    @ConfigProperty(name = "dhcp.uni.port.start", defaultValue = "0")
+    int uniPortStart;
+
+    @ConfigProperty(name = "dhcp.uni.port.count", defaultValue = "1")
+    int uniPortCount;
 
     @Inject
     @GrpcService
@@ -75,11 +78,13 @@ public class DhcpRestApi {
                     .build();
         }
 
-        // UNI validation (should always be 0 in storm, but can be flexible in manual requests)
-        if (request.getUniId() < 0 || request.getUniId() > uniPort - 1) {
+        // UNI validation
+        int uniPortMax = uniPortStart + uniPortCount - 1;
+        if (request.getUniId() < uniPortStart || request.getUniId() > uniPortMax) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
-                    .entity("UNI ID must be between 0 and " + (uniPort - 1) + ", got: " + request.getUniId())
+                    .entity("UNI ID must be between " + uniPortStart + " and " + uniPortMax +
+                            " (configured range), got: " + request.getUniId())
                     .build();
         }
 

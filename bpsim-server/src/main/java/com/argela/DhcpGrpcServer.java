@@ -62,6 +62,12 @@ public class DhcpGrpcServer extends OpenoltImplBase {
     @ConfigProperty(name = "dhcp.onu.port.count", defaultValue = "128")
     int onuPortCount;
 
+    @ConfigProperty(name = "dhcp.uni.port.start", defaultValue = "0")
+    int uniPortStart;
+
+    @ConfigProperty(name = "dhcp.uni.port.count", defaultValue = "1")
+    int uniPortCount;
+
     // Lazy-initialized MAC addresses
     private byte[] serverMac;
     private byte[] broadcastMac;
@@ -676,25 +682,128 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      */
     public void sendDhcp(DhcpSimulationRequest request){
         String packetType = request.getPacketType().toLowerCase();
-        DeviceInfo device = switch(packetType) {
-            case "discovery" -> createDeviceForDiscovery(request);
-            case "offer" -> createDeviceForOffer(request);
-            case "request" -> createDeviceForRequest(request);
-            case "ack" -> createDeviceForAck(request);
-            default -> null;
-        };
+        // Try to find existing idle device first
+        Optional<DeviceInfo> existingDevice = deviceService.findIdleDevice(
+                request.getPonPort(),
+                request.getOnuId(),
+                request.getUniId(),
+                request.getGemPort(),
+                request.getCTag()
+        );
 
-        if (device != null) {
-            deviceService.addDevice(device);
+        DeviceInfo device;
+
+        if (existingDevice.isPresent()) {
+            device = existingDevice.get();
+            logger.info("Using existing idle device ID={} for {} request",
+                    device.getId(), packetType.toUpperCase());
+
+            // Update device based on packet type
             switch(packetType) {
-                case "discovery" -> sendDhcpDiscover(device);
-                case "offer" -> sendDhcpOffer(device);
-                case "request" -> sendDhcpRequest(device);
-                case "ack" -> sendDhcpAck(device);
+                case "discovery" -> updateDeviceForDiscovery(device);
+                case "offer" -> updateDeviceForOffer(device);
+                case "request" -> updateDeviceForRequest(device);
+                case "ack" -> updateDeviceForAck(device);
+                default -> {
+                    logger.error("Unknown packet type: {}", request.getPacketType());
+                    return;
+                }
             }
+
+            // Override MAC if provided in request
+            if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+                device.setClientMac(request.getClientMac().trim());
+            }
+
+            deviceService.updateDevice(device);
+
         } else {
-            logger.error("Unknown packet type: {}", request.getPacketType());
+            // Create new device if no matching idle device found
+            logger.info("No matching idle device found, creating new device for {} request",
+                    packetType.toUpperCase());
+
+            device = switch(packetType) {
+                case "discovery" -> createDeviceForDiscovery(request);
+                case "offer" -> createDeviceForOffer(request);
+                case "request" -> createDeviceForRequest(request);
+                case "ack" -> createDeviceForAck(request);
+                default -> null;
+            };
+
+            if (device != null) {
+                deviceService.addDevice(device);
+            } else {
+                logger.error("Unknown packet type: {}", request.getPacketType());
+                return;
+            }
         }
+
+        // Send DHCP packet
+        switch(packetType) {
+            case "discovery" -> sendDhcpDiscover(device);
+            case "offer" -> sendDhcpOffer(device);
+            case "request" -> sendDhcpRequest(device);
+            case "ack" -> sendDhcpAck(device);
+        }
+    }
+
+    private void updateDeviceForDiscovery(DeviceInfo device) {
+        device.setState("DISCOVERING");
+        device.setIpAddress(null);
+        device.setRequiredIp(null);
+        device.setDns(null);
+        device.setGateway(null);
+        device.setServerIdentifier(null);
+        device.setSubnetMask(null);
+        device.setLeaseTime(0);
+        device.setLeaseStartTime(null);
+        device.setDhcpStartTime(Instant.now());
+        device.setDhcpCompletionTime(null);
+    }
+
+    private void updateDeviceForOffer(DeviceInfo device) {
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+
+        device.setState("OFFERED");
+        device.setIpAddress(deviceService.generateUniqueIPAddress(device.getVlanId()));
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+        device.setLeaseTime(defaultLeaseTime);
+        device.setDhcpStartTime(Instant.now());
+    }
+
+    private void updateDeviceForRequest(DeviceInfo device) {
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+        String offeredIP = deviceService.generateUniqueIPAddress(device.getVlanId());
+
+        device.setState("REQUESTING");
+        device.setIpAddress(offeredIP);
+        device.setRequiredIp(offeredIP);
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+        device.setLeaseTime(defaultLeaseTime);
+        device.setDhcpStartTime(Instant.now());
+    }
+
+    private void updateDeviceForAck(DeviceInfo device) {
+        DeviceService.NetworkConfiguration networkConfig = deviceService.getNetworkConfiguration(device.getVlanId());
+        String requestedIP = deviceService.generateUniqueIPAddress(device.getVlanId());
+
+        device.setState("ACKNOWLEDGED");
+        device.setIpAddress(requestedIP);
+        device.setRequiredIp(requestedIP);
+        device.setDns(networkConfig.getDnsServers());
+        device.setGateway(networkConfig.getGateway());
+        device.setServerIdentifier(networkConfig.getServerIdentifier());
+        device.setSubnetMask(networkConfig.getSubnetMask());
+        device.setLeaseTime(defaultLeaseTime);
+        device.setLeaseStartTime(Instant.now());
+        device.setDhcpStartTime(Instant.now());
+        device.setDhcpCompletionTime(Instant.now());
     }
 
     /**
@@ -1073,7 +1182,8 @@ public class DhcpGrpcServer extends OpenoltImplBase {
         }
 
         // Calculate total device count
-        int totalDevices = ponPortCount * onuPortCount;
+        int totalDevices = ponPortCount * onuPortCount * uniPortCount;
+
 
         currentStormFuture = CompletableFuture.runAsync(() -> {
             try {
@@ -1096,61 +1206,49 @@ public class DhcpGrpcServer extends OpenoltImplBase {
 
                     // Loop over ONU ports
                     for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
-                        synchronized (stormLock) {
-                            if (!stormInProgress) {
-                                logger.debug("Storm cancelled at device {}", deviceIndex);
-                                break outerLoop;
-                            }
-                        }
-
-                        if (Thread.currentThread().isInterrupted()) {
-                            logger.debug("Storm thread interrupted at device {}", deviceIndex);
-                            break outerLoop;
-                        }
 
                         int currentOnuPort = onuPortStart + onuIndex;
-                        deviceIndex++;
-
-                        try {
-                            // Fixed and random parameters
-                            int uniId = 0; // UNI is always 0
-                            int gemPort = 1024 + random.nextInt(2048); // GEM port random
-                            int cTag = 100 + random.nextInt(3994); // C-TAG random
-
-                            // Create DhcpSimulationRequest object
-                            DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
-                                    "discovery", currentPonPort, currentOnuPort, uniId, gemPort, cTag, null
-                            );
-
-                            // Create discovery device and send
-                            DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
-                            deviceService.addDevice(stormDevice);
-                            sendDhcpDiscover(stormDevice);
-
-                            successCount++;
-
-                            // Progress log (every 50 devices or at PON port change)
-                            if (deviceIndex % 50 == 0 || onuIndex == onuPortCount - 1) {
-                                logger.info("Storm progress: {}/{} devices sent (PON: {}, ONU: {}) - Success: {}, Failed: {}",
-                                        deviceIndex, totalDevices, currentPonPort, currentOnuPort, successCount, failureCount);
-                            }
-
-                            // Apply delay if not the last device
-                            if (deviceIndex < totalDevices) {
-                                try {
-                                    Thread.sleep(delayMs);
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    logger.debug("Storm sleep interrupted at device {}", deviceIndex);
+                        for (int uniIndex = 0; uniIndex < uniPortCount; uniIndex++) {
+                            synchronized (stormLock) {
+                                if (!stormInProgress) {
+                                    logger.debug("Storm cancelled at device {}", deviceIndex);
                                     break outerLoop;
                                 }
                             }
+                            if (Thread.currentThread().isInterrupted()) {
+                                logger.debug("Storm thread interrupted at device {}", deviceIndex);
+                                break outerLoop;
+                            }
+                            deviceIndex++;
+                            try {
+                                int gemPort = 1024 + random.nextInt(2048);
+                                int cTag = 100 + random.nextInt(3994);
 
-                        } catch (Exception e) {
-                            failureCount++;
-                            logger.error("Error sending device {} (PON: {}, ONU: {}): {}",
-                                    deviceIndex, currentPonPort, currentOnuPort, e.getMessage());
-                            // Continue storm, just skip this device
+                                DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
+                                        "discovery", currentPonPort, currentOnuPort, uniIndex, gemPort, cTag, null
+                                );
+
+                                // Use the preloaded IDLE device if available
+                                DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
+                                deviceService.addDevice(stormDevice);
+                                sendDhcpDiscover(stormDevice);
+
+                                successCount++;
+                                if (deviceIndex % 50 == 0) {
+                                    logger.info("Storm progress: {}/{} devices sent", deviceIndex, totalDevices);
+                                }
+                                if (deviceIndex < totalDevices) {
+                                    try {
+                                        Thread.sleep(delayMs);
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                        break outerLoop;
+                                    }
+                                }
+                            } catch (Exception e) {
+                                failureCount++;
+                                logger.error("Error sending device {}: {}", deviceIndex, e.getMessage());
+                            }
                         }
                     }
 
