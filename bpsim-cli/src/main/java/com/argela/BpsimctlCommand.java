@@ -520,11 +520,6 @@ class BpsimctlCommand implements Runnable {
 
                     String details = (String) errorResponse.get("details");
                     if (details != null) {
-                        if (details.contains("MAC address already exists:")) {
-                            String mac = extractMacFromError(details, "MAC address already exists:");
-                            return "MAC address already exists: " + mac;
-                        }
-
                         if (details.contains("Invalid MAC address format:")) {
                             String mac = extractMacFromError(details, "Invalid MAC address format:");
                             return "Invalid MAC address format: " + mac + ". Expected format: xx:xx:xx:xx:xx:xx";
@@ -536,6 +531,10 @@ class BpsimctlCommand implements Runnable {
                                 msg = msg.substring(0, msg.indexOf("\n"));
                             }
                             return msg.trim();
+                        }
+
+                        if (details.contains("Device not found")) {
+                            return details;
                         }
                     }
 

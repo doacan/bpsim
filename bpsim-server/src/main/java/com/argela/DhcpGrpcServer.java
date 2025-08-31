@@ -686,61 +686,41 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      */
     public void sendDhcp(DhcpSimulationRequest request){
         String packetType = request.getPacketType().toLowerCase();
-        // Try to find existing idle device first
-        Optional<DeviceInfo> existingDevice = deviceService.findIdleDevice(
+
+        // Find existing device first by PON, ONU, UNI parameters only
+        Optional<DeviceInfo> existingDevice = deviceService.findDeviceByPonOnuUni(
                 request.getPonPort(),
                 request.getOnuId(),
-                request.getUniId(),
-                request.getGemPort(),
-                request.getCTag()
+                request.getUniId()
         );
 
-        DeviceInfo device;
+        if (existingDevice.isEmpty()) {
+            logger.error("No device found with PON={}, ONU={}, UNI={}",
+                    request.getPonPort(), request.getOnuId(), request.getUniId());
+            throw new RuntimeException("Device not found with specified parameters");
+        }
 
-        if (existingDevice.isPresent()) {
-            device = existingDevice.get();
-            logger.info("Using existing idle device ID={} for {} request",
-                    device.getId(), packetType.toUpperCase());
+        DeviceInfo device = existingDevice.get();
+        logger.info("Using existing device ID={} for {} request", device.getId(), packetType.toUpperCase());
 
-            // Update device based on packet type
-            switch(packetType) {
-                case "discovery" -> updateDeviceForDiscovery(device);
-                case "offer" -> updateDeviceForOffer(device);
-                case "request" -> updateDeviceForRequest(device);
-                case "ack" -> updateDeviceForAck(device);
-                default -> {
-                    logger.error("Unknown packet type: {}", request.getPacketType());
-                    return;
-                }
-            }
-
-            // Override MAC if provided in request
-            if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
-                device.setClientMac(request.getClientMac().trim());
-            }
-
-            deviceService.updateDevice(device);
-
-        } else {
-            // Create new device if no matching idle device found
-            logger.info("No matching idle device found, creating new device for {} request",
-                    packetType.toUpperCase());
-
-            device = switch(packetType) {
-                case "discovery" -> createDeviceForDiscovery(request);
-                case "offer" -> createDeviceForOffer(request);
-                case "request" -> createDeviceForRequest(request);
-                case "ack" -> createDeviceForAck(request);
-                default -> null;
-            };
-
-            if (device != null) {
-                deviceService.addDevice(device);
-            } else {
+        // Update device based on packet type
+        switch(packetType) {
+            case "discovery" -> updateDeviceForDiscovery(device);
+            case "offer" -> updateDeviceForOffer(device);
+            case "request" -> updateDeviceForRequest(device);
+            case "ack" -> updateDeviceForAck(device);
+            default -> {
                 logger.error("Unknown packet type: {}", request.getPacketType());
-                return;
+                throw new RuntimeException("Unknown packet type: " + request.getPacketType());
             }
         }
+
+        // Override MAC if provided in request
+        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+            device.setClientMac(request.getClientMac().trim());
+        }
+
+        deviceService.updateDevice(device);
 
         // Send DHCP packet
         switch(packetType) {

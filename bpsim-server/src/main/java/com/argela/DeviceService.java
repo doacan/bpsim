@@ -342,6 +342,31 @@ public class DeviceService {
     }
 
     /**
+     * Finds a device by PON, ONU, UNI parameters only
+     * @param ponPort PON port number
+     * @param onuId ONU ID
+     * @param uniId UNI ID
+     * @return Optional containing matching device
+     */
+    public Optional<DeviceInfo> findDeviceByPonOnuUni(int ponPort, int onuId, int uniId) {
+        logger.debug("Finding device by PON={}, ONU={}, UNI={}", ponPort, onuId, uniId);
+
+        Optional<DeviceInfo> device = devices.values().stream()
+                .filter(d -> d.getPonPort() == ponPort)
+                .filter(d -> d.getOnuId() == onuId)
+                .filter(d -> d.getUniId() == uniId)
+                .findFirst();
+
+        if (device.isPresent()) {
+            logger.debug("Found device by PON/ONU/UNI: ID={}, state={}", device.get().getId(), device.get().getState());
+        } else {
+            logger.debug("No device found with PON={}, ONU={}, UNI={}", ponPort, onuId, uniId);
+        }
+
+        return device;
+    }
+
+    /**
      * Checks if an IP address is currently in use for the specified VLAN
      * @param ipAddress The IP address to check
      * @param vlanId The VLAN ID to check in
