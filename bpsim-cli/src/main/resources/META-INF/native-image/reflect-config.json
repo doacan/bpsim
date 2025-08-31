@@ -99,6 +99,14 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "java.util.Map",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "java.util.List",
+    "allDeclaredMethods": true
+  },
+  {
     "name": "java.lang.String",
     "allDeclaredMethods": true
   },
@@ -127,6 +135,31 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "com.fasterxml.jackson.databind.ObjectMapper",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.fasterxml.jackson.core.type.TypeReference",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.JsonNode",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.node.ObjectNode",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.node.ArrayNode",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "java.net.http.HttpClient",
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
@@ -137,9 +170,33 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "java.net.http.HttpRequest$Builder",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "java.net.http.HttpResponse",
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.http.HttpResponse$BodyHandlers",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.URI",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.URLEncoder",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "java.nio.charset.StandardCharsets",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
   },
   {
     "name": "org.jline.terminal.Terminal",
@@ -148,6 +205,21 @@
   },
   {
     "name": "org.jline.terminal.TerminalBuilder",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.jline.terminal.impl.AbstractTerminal",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "de.vandermeer.asciitable.AsciiTable",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "de.vandermeer.asciitable.CWC_LongestLine",
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
@@ -170,5 +242,14 @@
     "name": "picocli.CommandLine$Model$PositionalParamSpec",
     "allDeclaredMethods": true,
     "allDeclaredFields": true
+  },
+  {
+    "name": "picocli.CommandLine$IFactory",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "picocli.CommandLine$DefaultFactory",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
   }
 ]

@@ -223,11 +223,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @param request The ONU packet from VOLTHA containing DHCP messages
      */
     private void processOnuPacket(VolthaOpenOLT.OnuPacket request) {
+        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
+         */
 
         byte[] packetData = request.getPkt().toByteArray();
         try {
@@ -276,11 +278,13 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @param request The uplink packet from VOLTHA containing DHCP messages
      */
     private void processUplinkPacket(VolthaOpenOLT.UplinkPacket request) {
+        /*
         try{
             Thread.sleep(1000);
         } catch (InterruptedException e){
             Thread.currentThread().interrupt();
         }
+         */
 
         byte[] packetData = request.getPkt().toByteArray();
         try {
