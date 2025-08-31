@@ -431,34 +431,40 @@ public class DeviceService {
     }
 
     /**
-     * Resets all devices to initial IDLE state by clearing and reloading
+     * Resets all devices to IDLE state without recreating them
      */
-    public void resetToIdle() {
-        logger.info("Resetting all devices to initial IDLE state");
-        int oldDeviceCount = devices.size();
+    public void resetDevicesToIdle() {
+        logger.info("Resetting all devices to IDLE state");
+        int resetCount = 0;
 
-        // First clear everything like clearAll()
+        // Reset each device to IDLE state and clear network assignments
         devices.values().forEach(device -> {
+            // Release IP if assigned
             if (device.getIpAddress() != null) {
                 logger.debug("Releasing IP: {} for VLAN: {}", device.getIpAddress(), device.getVlanId());
                 vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
             }
+
+            // Reset device to IDLE state
+            device.setState("IDLE");
+            device.setIpAddress(null);
+            device.setRequiredIp(null);
+            device.setDns(null);
+            device.setGateway(null);
+            device.setServerIdentifier(null);
+            device.setSubnetMask(null);
+            device.setLeaseTime(0);
+            device.setLeaseStartTime(null);
+            device.setDhcpStartTime(null);
+            device.setDhcpCompletionTime(null);
         });
 
-        devices.clear();
-        devicesByXid.clear();
-        macAddresses.clear();
-        xids.clear();
-        deviceIdCounter.set(0);
-        vlanIPPoolManager.clearAll();
+        resetCount = devices.size();
 
-        // Then preload devices again
-        preloadDevices();
+        // Broadcast all devices with their new IDLE state
+        devices.values().forEach(DeviceWebSocket::broadcastDevice);
 
-        DeviceWebSocket.broadcastReset();
-
-        logger.info("System reset completed. {} old devices removed, {} new IDLE devices created",
-                oldDeviceCount, devices.size());
+        logger.info("Reset completed. {} devices reset to IDLE state", resetCount);
     }
 
     /**

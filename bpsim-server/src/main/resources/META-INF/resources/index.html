@@ -368,15 +368,11 @@
     }
 
     function handleReset() {
-        // Clear the UI and refresh with new IDLE devices
-        deviceGrid.innerHTML = '';
-        deviceCount = 0;
-        updateStats();
         showNotification("All devices reset to IDLE state", "success");
     }
 
     async function resetToIdle() {
-        if (!confirm("Are you sure you want to reset all devices to IDLE state? This will clear current sessions and recreate devices.")) {
+        if (!confirm("Are you sure you want to reset all devices to IDLE state?")) {
             return;
         }
 
@@ -394,12 +390,7 @@
             const result = await response.json();
 
             if (response.ok) {
-                // Clear the UI
-                deviceGrid.innerHTML = '';
-                deviceCount = 0;
-                updateStats();
-
-                showNotification(`Reset successful: ${result.oldCount} devices cleared, ${result.newCount} IDLE devices created`, "success");
+                showNotification(`Reset successful: ${result.resetCount} devices reset to IDLE state`, "success");
             } else {
                 showNotification(`Error: ${result.message || result.error}`, "error");
             }

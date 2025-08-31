@@ -322,18 +322,16 @@ public class DhcpRestApi {
     @Produces(MediaType.APPLICATION_JSON)
     public Response resetDevicesToIdle() {
         try {
-            int oldDeviceCount = deviceService.getAllDevices().size();
+            int deviceCount = deviceService.getAllDevices().size();
 
-            // Reset all devices to IDLE state
-            deviceService.resetToIdle();
+            // Reset all devices to IDLE state (keeping existing devices)
+            deviceService.resetDevicesToIdle();
 
-            int newDeviceCount = deviceService.getAllDevices().size();
-
-            logger.info("All devices reset to IDLE. Old count: {}, New count: {}", oldDeviceCount, newDeviceCount);
+            logger.info("All devices reset to IDLE. Device count: {}", deviceCount);
 
             return Response.ok()
                     .entity("{\"status\": \"success\", \"message\": \"All devices reset to IDLE state\", " +
-                            "\"oldCount\": " + oldDeviceCount + ", \"newCount\": " + newDeviceCount + "}")
+                            "\"resetCount\": " + deviceCount + "}")
                     .build();
 
         } catch (Exception e) {
