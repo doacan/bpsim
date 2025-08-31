@@ -24,6 +24,24 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "com.argela.BpsimctlCommand$InfoCommand",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.argela.BpsimctlCommand$StopCommand",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.argela.BpsimctlCommand$ClearCommand",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "com.argela.BpsimctlCommand$DhcpCommand$DhcpPacketCommand",
     "allDeclaredMethods": true,
     "allDeclaredFields": true,
@@ -67,14 +85,90 @@
   },
   {
     "name": "java.util.LinkedHashMap",
-    "allDeclaredConstructors": true
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
   },
   {
     "name": "java.util.ArrayList",
-    "allDeclaredConstructors": true
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
   },
   {
     "name": "java.util.HashMap",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "java.lang.String",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "java.lang.Object",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "java.lang.Integer",
+    "allDeclaredMethods": true,
     "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.lang.Long",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.lang.Double",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.lang.Boolean",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.http.HttpClient",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.http.HttpRequest",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.net.http.HttpResponse",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.jline.terminal.Terminal",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.jline.terminal.TerminalBuilder",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "picocli.CommandLine",
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "picocli.CommandLine$Model$CommandSpec",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "picocli.CommandLine$Model$OptionSpec",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "picocli.CommandLine$Model$PositionalParamSpec",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
   }
 ]
