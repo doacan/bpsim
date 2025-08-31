@@ -1181,79 +1181,70 @@ public class DhcpGrpcServer extends OpenoltImplBase {
             throw new IllegalArgumentException("Invalid parameters for DHCP storm simulation");
         }
 
-        // Calculate total device count
-        int totalDevices = ponPortCount * onuPortCount * uniPortCount;
-
+        // Get idle devices for storm - use preloaded devices instead of creating new ones
+        List<DeviceInfo> idleDevices = deviceService.getDevicesByState("IDLE");
+        int totalDevices = idleDevices.size();
 
         currentStormFuture = CompletableFuture.runAsync(() -> {
             try {
-                logger.info("DHCP Storm started - Rate: {}",
-                        (rate != null ? rate + " devices/sec" : "1 device per " + intervalSec + " seconds"));
-                logger.info("Total devices to create: {} (PON: {}-{}, ONU: {}-{})",
-                        totalDevices, ponPortStart, ponPortStart + ponPortCount - 1,
-                        onuPortStart, onuPortStart + onuPortCount - 1);
+                logger.info("DHCP Storm started - Rate: {}, Available idle devices: {}",
+                        (rate != null ? rate + " devices/sec" : "1 device per " + intervalSec + " seconds"),
+                        totalDevices);
 
-                Random random = new Random();
+                if (totalDevices == 0) {
+                    logger.warn("No idle devices available for storm simulation");
+                    DeviceWebSocket.broadcastStormStatus(
+                            "error",
+                            null,
+                            null,
+                            "No idle devices available for storm simulation"
+                    );
+                    return;
+                }
+
                 int successCount = 0;
                 int failureCount = 0;
-                int deviceIndex = 0;
 
-                // Loop over PON ports
-                outerLoop: for (int ponIndex = 0; ponIndex < ponPortCount; ponIndex++) {
-                    logger.debug("Starting storm loop for {} PON ports and {} ONU ports", ponPortCount, onuPortCount);
-
-                    int currentPonPort = ponPortStart + ponIndex;
-
-                    // Loop over ONU ports
-                    for (int onuIndex = 0; onuIndex < onuPortCount; onuIndex++) {
-
-                        int currentOnuPort = onuPortStart + onuIndex;
-                        for (int uniIndex = 0; uniIndex < uniPortCount; uniIndex++) {
-                            synchronized (stormLock) {
-                                if (!stormInProgress) {
-                                    logger.debug("Storm cancelled at device {}", deviceIndex);
-                                    break outerLoop;
-                                }
-                            }
-                            if (Thread.currentThread().isInterrupted()) {
-                                logger.debug("Storm thread interrupted at device {}", deviceIndex);
-                                break outerLoop;
-                            }
-                            deviceIndex++;
-                            try {
-                                int gemPort = 1024 + random.nextInt(2048);
-                                int cTag = 100 + random.nextInt(3994);
-
-                                DhcpSimulationRequest stormRequest = new DhcpSimulationRequest(
-                                        "discovery", currentPonPort, currentOnuPort, uniIndex, gemPort, cTag, null
-                                );
-
-                                // Use the preloaded IDLE device if available
-                                DeviceInfo stormDevice = createDeviceForDiscovery(stormRequest);
-                                deviceService.addDevice(stormDevice);
-                                sendDhcpDiscover(stormDevice);
-
-                                successCount++;
-                                if (deviceIndex % 50 == 0) {
-                                    logger.info("Storm progress: {}/{} devices sent", deviceIndex, totalDevices);
-                                }
-                                if (deviceIndex < totalDevices) {
-                                    try {
-                                        Thread.sleep(delayMs);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                        break outerLoop;
-                                    }
-                                }
-                            } catch (Exception e) {
-                                failureCount++;
-                                logger.error("Error sending device {}: {}", deviceIndex, e.getMessage());
-                            }
+                // Process each idle device
+                for (int deviceIndex = 0; deviceIndex < totalDevices; deviceIndex++) {
+                    synchronized (stormLock) {
+                        if (!stormInProgress) {
+                            logger.debug("Storm cancelled at device {}", deviceIndex);
+                            break;
                         }
                     }
 
-                    // Log when each PON port is completed
-                    logger.info("PON port {} completed ({} ONUs)", currentPonPort, onuPortCount);
+                    if (Thread.currentThread().isInterrupted()) {
+                        logger.debug("Storm thread interrupted at device {}", deviceIndex);
+                        break;
+                    }
+
+                    try {
+                        DeviceInfo device = idleDevices.get(deviceIndex);
+
+                        // Update device state and send discovery
+                        updateDeviceForDiscovery(device);
+                        deviceService.updateDevice(device);
+                        sendDhcpDiscover(device);
+
+                        successCount++;
+
+                        if ((deviceIndex + 1) % 50 == 0) {
+                            logger.info("Storm progress: {}/{} devices sent", deviceIndex + 1, totalDevices);
+                        }
+
+                        if (deviceIndex < totalDevices - 1) {
+                            try {
+                                Thread.sleep(delayMs);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        failureCount++;
+                        logger.error("Error sending device {}: {}", deviceIndex, e.getMessage());
+                    }
                 }
 
                 logger.info("DHCP Storm completed: {} devices sent successfully, {} failed out of {} total devices",

@@ -431,6 +431,37 @@ public class DeviceService {
     }
 
     /**
+     * Resets all devices to initial IDLE state by clearing and reloading
+     */
+    public void resetToIdle() {
+        logger.info("Resetting all devices to initial IDLE state");
+        int oldDeviceCount = devices.size();
+
+        // First clear everything like clearAll()
+        devices.values().forEach(device -> {
+            if (device.getIpAddress() != null) {
+                logger.debug("Releasing IP: {} for VLAN: {}", device.getIpAddress(), device.getVlanId());
+                vlanIPPoolManager.releaseIP(device.getIpAddress(), device.getVlanId());
+            }
+        });
+
+        devices.clear();
+        devicesByXid.clear();
+        macAddresses.clear();
+        xids.clear();
+        deviceIdCounter.set(0);
+        vlanIPPoolManager.clearAll();
+
+        // Then preload devices again
+        preloadDevices();
+
+        DeviceWebSocket.broadcastReset();
+
+        logger.info("System reset completed. {} old devices removed, {} new IDLE devices created",
+                oldDeviceCount, devices.size());
+    }
+
+    /**
      * Gets system statistics including device counts and VLAN information
      * @return Map containing various system statistics
      */

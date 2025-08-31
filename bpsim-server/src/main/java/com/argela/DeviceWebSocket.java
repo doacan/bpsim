@@ -166,4 +166,27 @@ public class DeviceWebSocket {
         public String getType() { return type; }
         public String getAction() { return action; }
     }
+
+    /**
+     * Broadcasts reset message to connected clients
+     */
+    public static void broadcastReset() {
+        ResetMessage resetMessage = new ResetMessage();
+        String json = jsonb.toJson(resetMessage);
+
+        for (Session session : sessions) {
+            session.getAsyncRemote().sendText(json);
+        }
+    }
+
+    /**
+     * Message class for reset notifications
+     */
+    public static class ResetMessage {
+        private String type = "reset";
+        private String action = "reset_to_idle";
+
+        public String getType() { return type; }
+        public String getAction() { return action; }
+    }
 }

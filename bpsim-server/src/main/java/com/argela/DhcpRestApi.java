@@ -312,4 +312,36 @@ public class DhcpRestApi {
                     .build();
         }
     }
+
+    /**
+     * Resets all devices to initial IDLE state
+     * @return Response indicating success or error status with count of reset devices
+     */
+    @POST
+    @Path("/reset")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resetDevicesToIdle() {
+        try {
+            int oldDeviceCount = deviceService.getAllDevices().size();
+
+            // Reset all devices to IDLE state
+            deviceService.resetToIdle();
+
+            int newDeviceCount = deviceService.getAllDevices().size();
+
+            logger.info("All devices reset to IDLE. Old count: {}, New count: {}", oldDeviceCount, newDeviceCount);
+
+            return Response.ok()
+                    .entity("{\"status\": \"success\", \"message\": \"All devices reset to IDLE state\", " +
+                            "\"oldCount\": " + oldDeviceCount + ", \"newCount\": " + newDeviceCount + "}")
+                    .build();
+
+        } catch (Exception e) {
+            logger.error("Error resetting devices: {}", e.getMessage(), e);
+
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to reset devices\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
 }

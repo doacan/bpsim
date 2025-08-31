@@ -64,6 +64,29 @@
             align-items: center;
         }
 
+        .reset-button {
+            background-color: #ff9800;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .reset-button:hover {
+            background-color: #f57c00;
+            transform: scale(1.05);
+        }
+
+        .reset-button:disabled {
+            background-color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .storm-button {
             border: none;
             padding: 0.75rem 1.5rem;
@@ -175,14 +198,19 @@
 </head>
 <body>
 <header>
-    <div></div> <!-- Left spacer -->
+    <div></div>
     <div class="header-title">DHCP Device Dashboard</div>
     <button class="storm-button ready" id="stormBtn">
         Storm Ready
     </button>
-    <button class="clear-button" id="clearAllBtn" onclick="clearAllDevices()">
-        Clear All
-    </button>
+    <div class="header-controls">
+        <button class="reset-button" id="resetBtn" onclick="resetToIdle()">
+            Reset to IDLE
+        </button>
+        <button class="clear-button" id="clearAllBtn" onclick="clearAllDevices()">
+            Clear All
+        </button>
+    </div>
 </header>
 
 <div class="stats-info" id="statsInfo">
@@ -202,6 +230,7 @@
     const clearBtn = document.getElementById("clearAllBtn");
     const stormBtn = document.getElementById("stormBtn");
     const notification = document.getElementById("notification");
+    const resetBtn = document.getElementById("resetBtn");
 
     let deviceCount = 0;
     let stormStatus = 'ready';
@@ -209,6 +238,12 @@
 
     ws.onmessage = event => {
         const data = JSON.parse(event.data);
+
+        // Check if it's a reset message
+        if (data.type === 'reset') {
+            handleReset();
+            return;
+        }
 
         // Check if it's a clear all message
         if (data.type === 'clear_all') {
@@ -330,6 +365,51 @@
         deviceCount = 0;
         updateStats();
         showNotification("All devices cleared", "success");
+    }
+
+    function handleReset() {
+        // Clear the UI and refresh with new IDLE devices
+        deviceGrid.innerHTML = '';
+        deviceCount = 0;
+        updateStats();
+        showNotification("All devices reset to IDLE state", "success");
+    }
+
+    async function resetToIdle() {
+        if (!confirm("Are you sure you want to reset all devices to IDLE state? This will clear current sessions and recreate devices.")) {
+            return;
+        }
+
+        resetBtn.disabled = true;
+        resetBtn.textContent = "Resetting...";
+
+        try {
+            const response = await fetch('/dhcp/reset', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // Clear the UI
+                deviceGrid.innerHTML = '';
+                deviceCount = 0;
+                updateStats();
+
+                showNotification(`Reset successful: ${result.oldCount} devices cleared, ${result.newCount} IDLE devices created`, "success");
+            } else {
+                showNotification(`Error: ${result.message || result.error}`, "error");
+            }
+        } catch (error) {
+            console.error('Error resetting devices:', error);
+            showNotification("An error occurred during the reset process", "error");
+        } finally {
+            resetBtn.disabled = false;
+            resetBtn.textContent = "Reset to IDLE";
+        }
     }
 
     function updateStats() {
