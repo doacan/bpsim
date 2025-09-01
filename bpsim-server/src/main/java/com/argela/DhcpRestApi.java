@@ -343,4 +343,38 @@ public class DhcpRestApi {
                     .build();
         }
     }
+
+    /**
+     * Reloads all devices by clearing and recreating them in IDLE state
+     * @return Response indicating success or error status with count of created devices
+     */
+    @POST
+    @Path("/reload")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reloadDevices() {
+        try {
+            // Get device count before clearing
+            int previousCount = deviceService.getAllDevices().size();
+
+            // Reload devices (clear + recreate)
+            deviceService.reloadDevices();
+
+            // Get new device count
+            int newCount = deviceService.getAllDevices().size();
+
+            logger.info("Device reload completed. Previous: {}, New: {}", previousCount, newCount);
+
+            return Response.ok()
+                    .entity("{\"status\": \"success\", \"message\": \"Devices reloaded successfully\", " +
+                            "\"deviceCount\": " + newCount + "}")
+                    .build();
+
+        } catch (Exception e) {
+            logger.error("Error reloading devices: {}", e.getMessage(), e);
+
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\": \"Failed to reload devices\", \"message\": \"" + e.getMessage() + "\"}")
+                    .build();
+        }
+    }
 }

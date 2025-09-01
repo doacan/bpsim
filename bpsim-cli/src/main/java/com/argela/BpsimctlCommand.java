@@ -31,7 +31,8 @@ import java.util.Objects;
                 BpsimctlCommand.InfoCommand.class,
                 BpsimctlCommand.StopCommand.class,
                 BpsimctlCommand.ClearCommand.class,
-                BpsimctlCommand.ResetCommand.class
+                BpsimctlCommand.ResetCommand.class,
+                BpsimctlCommand.ReloadCommand.class
         })
 class BpsimctlCommand implements Runnable {
     public static void main(String[] args) {
@@ -311,8 +312,11 @@ class BpsimctlCommand implements Runnable {
             try {
                 String state = row.get("state") != null ? row.get("state").toString() : "";
 
+                if ("IDLE".equals(state)) {
+                    return null;
+                }
+
                 if ("ACKNOWLEDGED".equals(state)) {
-                    // For ACKNOWLEDGED state, use completion time
                     Object completionTimeObj = row.get("dhcpCompletionTimeMs");
                     if (completionTimeObj != null) {
                         return Long.valueOf(completionTimeObj.toString());
@@ -522,7 +526,7 @@ class BpsimctlCommand implements Runnable {
                     String details = (String) errorResponse.get("details");
                     if (details != null) {
                         if (details.contains("Invalid MAC address format:")) {
-                            String mac = extractMacFromError(details, "Invalid MAC address format:");
+                            String mac = extractMacFromError(details);
                             return "Invalid MAC address format: " + mac + ". Expected format: xx:xx:xx:xx:xx:xx";
                         }
 
@@ -546,12 +550,12 @@ class BpsimctlCommand implements Runnable {
                 }
             }
 
-            private String extractMacFromError(String errorDetails, String prefix) {
+            private String extractMacFromError(String errorDetails) {
                 try {
-                    int startIndex = errorDetails.indexOf(prefix);
+                    int startIndex = errorDetails.indexOf("Invalid MAC address format:");
                     if (startIndex == -1) return "unknown";
 
-                    startIndex += prefix.length();
+                    startIndex += "Invalid MAC address format:".length();
                     String remaining = errorDetails.substring(startIndex).trim();
 
                     java.util.regex.Pattern macPattern = java.util.regex.Pattern.compile("([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}");
@@ -790,6 +794,53 @@ class BpsimctlCommand implements Runnable {
 
             } catch (Exception e) {
                 System.err.println("Error resetting devices: " + e.getMessage());
+            }
+        }
+    }
+
+    @Command(name = "reload",
+            mixinStandardHelpOptions = true,
+            description = "Reload all DHCP devices (clear and recreate in IDLE state)")
+    static class ReloadCommand implements Runnable {
+
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        String serverUrl = "http://localhost:8080";
+
+        @Override
+        public void run() {
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(serverUrl + "/dhcp/reload"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+                HttpResponse<String> response = client.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> result = mapper.readValue(response.body(), new TypeReference<>() { });
+
+                    System.out.println(result.get("message"));
+                    Object deviceCount = result.get("deviceCount");
+                    if (deviceCount != null) {
+                        System.out.println("Devices reloaded: " + deviceCount);
+                    }
+                } else {
+                    System.err.println("Error: HTTP " + response.statusCode());
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), new TypeReference<>() { });
+
+                        System.err.println("Message: " + errorResult.get("error"));
+                    } catch (Exception e) {
+                        System.err.println("Response: " + response.body());
+                    }
+                }
+
+            } catch (Exception e) {
+                System.err.println("Error reloading devices: " + e.getMessage());
             }
         }
     }

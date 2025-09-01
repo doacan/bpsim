@@ -694,33 +694,48 @@ public class DhcpGrpcServer extends OpenoltImplBase {
                 request.getUniId()
         );
 
+        DeviceInfo device;
         if (existingDevice.isEmpty()) {
-            logger.error("No device found with PON={}, ONU={}, UNI={}",
-                    request.getPonPort(), request.getOnuId(), request.getUniId());
-            throw new RuntimeException("Device not found with specified parameters");
-        }
+            // If device doesn't exist, create new one based on packet type
+            logger.info("No existing device found with PON={}, ONU={}, UNI={}. Creating new device for {} request",
+                    request.getPonPort(), request.getOnuId(), request.getUniId(), packetType.toUpperCase());
 
-        DeviceInfo device = existingDevice.get();
-        logger.info("Using existing device ID={} for {} request", device.getId(), packetType.toUpperCase());
+            device = switch(packetType) {
+                case "discovery" -> createDeviceForDiscovery(request);
+                case "offer" -> createDeviceForOffer(request);
+                case "request" -> createDeviceForRequest(request);
+                case "ack" -> createDeviceForAck(request);
+                default -> {
+                    logger.error("Unknown packet type: {}", request.getPacketType());
+                    throw new RuntimeException("Unknown packet type: " + request.getPacketType());
+                }
+            };
 
-        // Update device based on packet type
-        switch(packetType) {
-            case "discovery" -> updateDeviceForDiscovery(device);
-            case "offer" -> updateDeviceForOffer(device);
-            case "request" -> updateDeviceForRequest(device);
-            case "ack" -> updateDeviceForAck(device);
-            default -> {
-                logger.error("Unknown packet type: {}", request.getPacketType());
-                throw new RuntimeException("Unknown packet type: " + request.getPacketType());
+            deviceService.addDevice(device);
+            logger.info("Created new device ID={} for {} request", device.getId(), packetType.toUpperCase());
+        } else {
+            device = existingDevice.get();
+            logger.info("Using existing device ID={} for {} request", device.getId(), packetType.toUpperCase());
+
+            // Update device based on packet type
+            switch(packetType) {
+                case "discovery" -> updateDeviceForDiscovery(device);
+                case "offer" -> updateDeviceForOffer(device);
+                case "request" -> updateDeviceForRequest(device);
+                case "ack" -> updateDeviceForAck(device);
+                default -> {
+                    logger.error("Unknown packet type: {}", request.getPacketType());
+                    throw new RuntimeException("Unknown packet type: " + request.getPacketType());
+                }
             }
-        }
 
-        // Override MAC if provided in request
-        if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
-            device.setClientMac(request.getClientMac().trim());
-        }
+            // Override MAC if provided in request
+            if (request.getClientMac() != null && !request.getClientMac().trim().isEmpty()) {
+                device.setClientMac(request.getClientMac().trim());
+            }
 
-        deviceService.updateDevice(device);
+            deviceService.updateDevice(device);
+        }
 
         // Send DHCP packet
         switch(packetType) {

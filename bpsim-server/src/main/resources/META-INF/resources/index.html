@@ -87,6 +87,29 @@
             transform: none;
         }
 
+        .reload-button {
+            background-color: #9c27b0;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .reload-button:hover {
+            background-color: #7b1fa2;
+            transform: scale(1.05);
+        }
+
+        .reload-button:disabled {
+            background-color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .storm-button {
             border: none;
             padding: 0.75rem 1.5rem;
@@ -204,6 +227,9 @@
         Storm Ready
     </button>
     <div class="header-controls">
+        <button class="reload-button" id="reloadBtn" onclick="reloadDevices()">
+            Reload Devices
+        </button>
         <button class="reset-button" id="resetBtn" onclick="resetToIdle()">
             Reset to IDLE
         </button>
@@ -282,8 +308,10 @@
         }
         card.className = 'device-card ' + stateClass;
 
-        function formatDhcpDuration(durationMs, isCompleted) {
-            if (!durationMs) return 'N/A';
+        function formatDhcpDuration(durationMs, state) {
+            if (state === 'IDLE' || !durationMs) {
+                return '-';
+            }
 
             const seconds = (durationMs / 1000).toFixed(2);
             return seconds + 's';
@@ -400,6 +428,39 @@
         } finally {
             resetBtn.disabled = false;
             resetBtn.textContent = "Reset to IDLE";
+        }
+    }
+
+    async function reloadDevices() {
+        if (!confirm("Are you sure you want to reload all devices? This will recreate all devices in IDLE state.")) {
+            return;
+        }
+
+        const reloadBtn = document.getElementById("reloadBtn");
+        reloadBtn.disabled = true;
+        reloadBtn.textContent = "Reloading...";
+
+        try {
+            const response = await fetch('/dhcp/reload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showNotification(`Reload successful: ${result.deviceCount} devices recreated`, "success");
+            } else {
+                showNotification(`Error: ${result.message || result.error}`, "error");
+            }
+        } catch (error) {
+            console.error('Error reloading devices:', error);
+            showNotification("An error occurred during the reload process", "error");
+        } finally {
+            reloadBtn.disabled = false;
+            reloadBtn.textContent = "Reload Devices";
         }
     }
 

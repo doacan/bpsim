@@ -106,26 +106,39 @@ public class DeviceInfo {
 
     public Instant getDhcpCompletionTime() { return dhcpCompletionTime; }
     public void setDhcpCompletionTime(Instant dhcpCompletionTime) { this.dhcpCompletionTime = dhcpCompletionTime; }
+    /**
+     * Gets DHCP duration in milliseconds
+     * @return DHCP duration or null if DHCP not started
+     */
+    public Long getDhcpDurationMs() {
+        if ("IDLE".equals(state) || dhcpStartTime == null) {
+            return null;
+        }
 
-    public long getDhcpDurationMs() {
-        if (dhcpStartTime == null) return 0;
+        if ("ACKNOWLEDGED".equals(state) && dhcpCompletionTime != null) {
+            return java.time.Duration.between(dhcpStartTime, dhcpCompletionTime).toMillis();
+        }
+
         return java.time.Duration.between(dhcpStartTime, Instant.now()).toMillis();
+    }
+
+    /**
+     * Gets DHCP completion time in milliseconds (only for completed DHCP)
+     * @return Completion time in milliseconds or null if not completed
+     */
+    public Long getDhcpCompletionTimeMs() {
+        if (!isDhcpCompleted() || dhcpStartTime == null) {
+            return null;
+        }
+
+        if (dhcpCompletionTime != null) {
+            return java.time.Duration.between(dhcpStartTime, dhcpCompletionTime).toMillis();
+        }
+
+        return null;
     }
 
     public boolean isDhcpCompleted() {
         return "ACKNOWLEDGED".equals(state);
     }
-
-    public Long getDhcpCompletionTimeMs() {
-        if (!isDhcpCompleted() || dhcpStartTime == null) return null;
-
-        if (dhcpCompletionTime != null) {
-            // If completion time is set, use it
-            return java.time.Duration.between(dhcpStartTime, dhcpCompletionTime).toMillis();
-        }
-
-        // For backward compatibility
-        return java.time.Duration.between(dhcpStartTime, Instant.now()).toMillis();
-    }
-
 }

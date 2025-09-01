@@ -553,6 +553,21 @@ public class DeviceService {
     }
 
     /**
+     * Reloads all devices by clearing and recreating them in IDLE state
+     */
+    public void reloadDevices() {
+        logger.info("Reloading all devices - clearing and recreating");
+
+        // Clear everything first
+        clearAll();
+
+        // Recreate devices using preloadDevices logic
+        preloadDevices();
+
+        logger.info("Device reload completed successfully");
+    }
+
+    /**
      * Generates a unique transaction ID
      * @return A unique XID value
      */
