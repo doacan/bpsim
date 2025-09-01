@@ -1279,9 +1279,10 @@ public class DhcpGrpcServer extends OpenoltImplBase {
      * @return String containing storm configuration details
      */
     public String getStormInfo() {
-        int totalDevices = ponPortCount * onuPortCount;
+        int totalDevices = ponPortCount * onuPortCount * uniPortCount;
         return "Storm Configuration - PON Ports: " + ponPortStart + "-" + (ponPortStart + ponPortCount - 1) +
                 ", ONU Ports: " + onuPortStart + "-" + (onuPortStart + onuPortCount - 1) +
+                ", UNI Ports: " + uniPortStart + "-" + (uniPortStart + uniPortCount - 1) +
                 ", Total Devices: " + totalDevices;
     }
 

@@ -30,7 +30,8 @@ import java.util.Objects;
                 BpsimctlCommand.DhcpStormCommand.class,
                 BpsimctlCommand.InfoCommand.class,
                 BpsimctlCommand.StopCommand.class,
-                BpsimctlCommand.ClearCommand.class
+                BpsimctlCommand.ClearCommand.class,
+                BpsimctlCommand.ResetCommand.class
         })
 class BpsimctlCommand implements Runnable {
     public static void main(String[] args) {
@@ -647,6 +648,7 @@ class BpsimctlCommand implements Runnable {
                 System.out.println("==========================");
                 System.out.println("PON Ports: " + info.get("ponPortCount"));
                 System.out.println("ONU Ports: " + info.get("onuPortCount"));
+                System.out.println("UNI Ports: " + info.get("uniPortCount"));
                 System.out.println("Total Devices Capacity: " + info.get("totalDeviceCapacity"));
 
             } catch (Exception e) {
@@ -741,6 +743,53 @@ class BpsimctlCommand implements Runnable {
                 }
             } catch (Exception e) {
                 System.err.println("Error clearing devices: " + e.getMessage());
+            }
+        }
+    }
+
+    @Command(name = "reset",
+            mixinStandardHelpOptions = true,
+            description = "Reset all DHCP devices to IDLE state")
+    static class ResetCommand implements Runnable {
+
+        @Option(names = {"-U", "--url"}, description = "Server URL (default: http://localhost:8080)")
+        String serverUrl = "http://localhost:8080";
+
+        @Override
+        public void run() {
+            try (HttpClient client = HttpClient.newHttpClient()) {
+                HttpRequest httpRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(serverUrl + "/dhcp/reset"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+                HttpResponse<String> response = client.send(httpRequest,
+                        HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> result = mapper.readValue(response.body(), new TypeReference<>() { });
+
+                    System.out.println(result.get("message"));
+                    Object resetCount = result.get("resetCount");
+                    if (resetCount != null) {
+                        System.out.println("Devices reset: " + resetCount);
+                    }
+                } else {
+                    System.err.println("Error: HTTP " + response.statusCode());
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        Map<String, Object> errorResult = mapper.readValue(response.body(), new TypeReference<>() { });
+
+                        System.err.println("Message: " + errorResult.get("error"));
+                    } catch (Exception e) {
+                        System.err.println("Response: " + response.body());
+                    }
+                }
+
+            } catch (Exception e) {
+                System.err.println("Error resetting devices: " + e.getMessage());
             }
         }
     }

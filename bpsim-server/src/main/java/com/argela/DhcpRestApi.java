@@ -301,7 +301,8 @@ public class DhcpRestApi {
 
             info.put("ponPortCount", ponPortCount);
             info.put("onuPortCount", onuPortCount);
-            info.put("totalDeviceCapacity", ponPortCount * onuPortCount);
+            info.put("uniPortCount", uniPortCount);
+            info.put("totalDeviceCapacity", ponPortCount * onuPortCount * uniPortCount);
 
             return Response.ok(info).build();
 

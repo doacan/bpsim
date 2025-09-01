@@ -36,6 +36,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "com.argela.BpsimctlCommand$ResetCommand",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "com.argela.BpsimctlCommand$ClearCommand",
     "allDeclaredMethods": true,
     "allDeclaredFields": true,
