@@ -1,18 +1,18 @@
 # BPSIM - DHCP Simulation Tool
 
-## Docker ile Çalıştırma
+## Docker Deployment
 
-### Hızlı Başlangıç
+### Quick Start
 
-#### 1. Docker Image Build Etme
+#### 1. Build Docker Image
 ```bash
-# Proje dizininde
+# In project directory
 docker build -t bpsim:latest .
 ```
 
-#### 2. Container'ı Çalıştırma
+#### 2. Run Container
 ```bash
-# Port mapping ile çalıştırma
+# Run with port mapping
 docker run -d \
   --name bpsim-container \
   -p 8080:8080 \
@@ -20,20 +20,20 @@ docker run -d \
   bpsim:latest
 ```
 
-#### 3. Erişim
-- **Web Arayüzü**: http://localhost:8080
+#### 3. Access Services
+- **Web Dashboard**: http://localhost:8080
 - **gRPC Server**: localhost:9000
 - **REST API**: http://localhost:8080/dhcp
 
-### CLI Aracı Kullanımı
+### CLI Tool Usage
 
-Container içinde CLI aracını kullanmak için:
+Use the CLI tool inside the container:
 
 ```bash
-# Container'a bağlanma
+# Connect to container
 docker exec -it bpsim-container bash
 
-# CLI komutları
+# CLI commands
 bpsimctl --help
 bpsimctl list --help
 bpsimctl dhcp discovery 0 1 0 1024 100
@@ -41,44 +41,32 @@ bpsimctl list -v 100
 bpsimctl storm 100
 ```
 
-### Port Açıklamaları
+### Port Mapping
 
-| Port | Protokol | Açıklama |
-|------|----------|----------|
-| 8080 | HTTP | Web arayüzü ve REST API |
-| 9000 | gRPC | DHCP simülasyon gRPC servisi |
+| Port | Protocol | Description |
+|------|----------|-------------|
+| 8080 | HTTP | Web dashboard and REST API |
+| 9000 | gRPC | DHCP simulation gRPC service |
 
+### Environment Configuration
 
-### Konfigürasyon
-
-Container çalışırken konfigürasyon değişiklikleri için environment variables kullanılabilir:
+Customize configuration using environment variables:
 
 ```bash
 docker run -d \
   --name bpsim-container \
   -p 8080:8080 \
   -p 9000:9000 \
-  -e DHCP_DEVICE_MAX_COUNT=50000 \
   -e DHCP_PON_PORT_COUNT=32 \
   -e DHCP_ONU_PORT_COUNT=128 \
+  -e DHCP_NETWORK_BASE_IP=192.168.0.0 \
+  -e DHCP_SUBNET_MASK_BITS=24 \
   bpsim:latest
 ```
 
-### Monitoring
+### Persistent Data
 
-Container resource kullanımını izleme:
-
-```bash
-# Gerçek zamanlı resource kullanımı
-docker stats bpsim-container
-
-# Memory ve CPU kullanımı
-docker exec bpsim-container top
-```
-
-### Backup ve Restore
-
-Veriler container restart edildiğinde kaybolur. Kalıcı veri için volume kullanın:
+For persistent data across container restarts, use volumes:
 
 ```bash
 docker run -d \
@@ -89,49 +77,202 @@ docker run -d \
   bpsim:latest
 ```
 
-## CLI Komut Örnekleri
+### Monitoring
 
-### Temel DHCP Komutları
+Monitor container resource usage:
+
 ```bash
-# DHCP Discovery
+# Real-time resource usage
+docker stats bpsim-container
+
+# Memory and CPU usage
+docker exec bpsim-container top
+```
+
+## CLI Command Reference
+
+### Basic DHCP Commands
+
+Simulate individual DHCP packet types:
+
+```bash
+# DHCP Discovery packet
+bpsimctl dhcp discovery <pon_port> <onu_id> <uni_id> <gem_port> <c_tag>
 bpsimctl dhcp discovery 0 1 0 1024 100
 
-# DHCP Offer
+# DHCP Offer packet
 bpsimctl dhcp offer 0 1 0 1024 100
 
-# DHCP Request
+# DHCP Request packet
 bpsimctl dhcp request 0 1 0 1024 100
 
-# DHCP ACK
+# DHCP ACK packet
 bpsimctl dhcp ack 0 1 0 1024 100
+
+# With custom MAC address
+bpsimctl dhcp discovery 0 1 0 1024 100 --mac "aa:bb:cc:dd:ee:ff"
 ```
 
-### Liste ve Filtreleme
+### Device Listing and Filtering
+
+List and filter DHCP devices:
+
 ```bash
-# Tüm cihazları listele
+# List all devices
 bpsimctl list
 
-# VLAN bazlı filtreleme
+# Filter by VLAN ID
 bpsimctl list -v 100
+bpsimctl list --vlan 100
 
-# PON port bazlı filtreleme
+# Filter by PON port
 bpsimctl list -p 0
+bpsimctl list --pon 0
 
-# State bazlı filtreleme
+# Filter by ONU ID
+bpsimctl list -o 1
+bpsimctl list --onu 1
+
+# Filter by UNI ID
+bpsimctl list -u 0
+bpsimctl list --uni 0
+
+# Filter by GEM port
+bpsimctl list -g 1024
+bpsimctl list --gem 1024
+
+# Filter by device state
 bpsimctl list -s ACKNOWLEDGED
+bpsimctl list --state IDLE
 
-# Genel text filtresi
+# General text filter (searches across multiple fields)
 bpsimctl list -f "10.0.1"
+bpsimctl list --filter "ACKNOWLEDGED"
 
-# Geniş çıktı (tüm kolonlar)
+# Wide output (show all columns)
 bpsimctl list -w
+bpsimctl list --wide
+
+# Combine multiple filters
+bpsimctl list -v 100 -s ACKNOWLEDGED -p 0
 ```
 
-### Storm Simülasyonu
-```bash
-# Rate bazlı storm (100 cihaz/saniye)
-bpsimctl storm 100
+### Storm Simulation
 
-# Interval bazlı storm (5 saniyede bir cihaz)
-bpsimctl storm 0 5.0
+Generate high-volume DHCP requests:
+
+```bash
+# Rate-based storm (devices per second)
+bpsimctl storm 100        # 100 devices/second
+bpsimctl storm 50         # 50 devices/second
+
+# Interval-based storm (seconds between devices)
+bpsimctl storm 0 5.0      # One device every 5 seconds
+bpsimctl storm 0 0.1      # One device every 100ms
+
+# Stop running storm
+bpsimctl stop
+```
+
+### System Management
+
+Manage system state and configuration:
+
+```bash
+# Get system information
+bpsimctl info
+
+# Reset all devices to IDLE state (keeps devices)
+bpsimctl reset
+
+# Reload all devices (clear and recreate)
+bpsimctl reload
+
+# Clear all devices from system
+bpsimctl clear
+```
+
+### Server URL Configuration
+
+Specify custom server URL:
+
+```bash
+# Use different server
+bpsimctl list --url http://192.168.1.100:8080
+bpsimctl storm 100 --url http://remote-server:8080
+
+# Short form
+bpsimctl list -U http://localhost:9090
+```
+
+## REST API Reference
+
+### DHCP Simulation
+
+#### Send DHCP Packet
+```bash
+POST /dhcp
+Content-Type: application/json
+
+{
+  "packetType": "DISCOVERY",
+  "ponPort": 0,
+  "onuId": 1,
+  "uniId": 0,
+  "gemPort": 1024,
+  "cTag": 100,
+  "clientMac": "aa:bb:cc:dd:ee:ff"  // optional
+}
+```
+
+#### List DHCP Sessions
+```bash
+# List all devices
+GET /dhcp/list
+
+# With filters
+GET /dhcp/list?vlanId=100&state=ACKNOWLEDGED&ponPort=0
+```
+
+#### Start DHCP Storm
+```bash
+POST /dhcp/storm
+Content-Type: application/json
+
+# Rate-based
+{
+  "rate": 100
+}
+
+# Interval-based
+{
+  "intervalSec": 5.0
+}
+```
+
+#### Cancel Storm
+```bash
+POST /dhcp/storm/cancel
+```
+
+### System Management
+
+#### Get System Information
+```bash
+GET /dhcp/info
+```
+
+#### Reset Devices
+```bash
+POST /dhcp/reset
+```
+
+#### Reload Devices
+```bash
+POST /dhcp/reload
+```
+
+#### Clear All Devices
+```bash
+DELETE /dhcp/clear-all
 ```
